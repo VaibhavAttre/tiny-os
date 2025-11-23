@@ -6,6 +6,6 @@ void panic(const char *msg) {
     uart_puts(msg);
     uart_puts("\n");
     while (1) {
-        // Halt the system
+        
     }
 }

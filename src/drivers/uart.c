@@ -4,7 +4,7 @@
 #define UART0 ((volatile uint8_t *)0x10000000)
 
 void uart_init() {
-	// Initialization code for UART can be added here if needed
+
 }
 
 void uart_putc(char c) {
