@@ -12,7 +12,8 @@ BUILD    := build
 OBJS := $(BUILD)/boot.o \
 		$(BUILD)/kernel.o \
 		$(BUILD)/uart.o \
-		$(BUILD)/panic.o 
+		$(BUILD)/panic.o \
+		$(BUILD)/printf.o
 
 all: kernel.elf
 
@@ -29,6 +30,9 @@ $(BUILD)/uart.o: src/drivers/uart.c | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/kernel.o: src/kernel/kernel.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/printf.o: src/kernel/printf.c | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
 kernel.elf: $(OBJS) linker.ld

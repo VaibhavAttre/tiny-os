@@ -1,4 +1,4 @@
-#include <kernel/panic.h>
+#include <kernel/printf.h>
 #include <drivers/uart.h>
 
 void panic(const char *msg) {
