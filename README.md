@@ -32,10 +32,10 @@ So I decided to take on the challenge of writing a small OS:
 
 ### Phase 1 — Core Basics
 
-- [ ] **Console I/O**
+- [x] **Console I/O**
   - UART driver
   - Minimal `kprintf` implementation
-- [ ] **Panic Handling**
+- [x] **Panic Handling**
   - Kernel `panic()` that prints an error and halts
 - [ ] **Trap & Exception Handling**
   - Set up trap vector
