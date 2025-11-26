@@ -1,36 +1,26 @@
+MEMORY
+{
+    RAM (rwx) : ORIGIN = 0x80000000, LENGTH = 128M
+}
 
-
-
-ENTRY(_start)
-
-SECTIONS {
-
+SECTIONS
+{
+    .text : {
+        *(.text._start)
+        *(.text*)
+    } > RAM
     
-    . = 0x80000000;
-
-    .text : ALIGN(4K) {
-        
-        *(.init)
-        *(.text .text.*)
-    }
-
-    .bss : ALIGN(4K) {
-        
+    .data : { *(.data*) } > RAM
+    .bss : { 
+        . = ALIGN(16);
         __bss_start = .;
-        *(.bss .bss.*)
+        *(.bss*)
         *(COMMON)
         __bss_end = .;
-
+    } > RAM
+    
+    .stack : {
         . = ALIGN(16);
-        __stack_top = . + 16K;
-    }
-
-    .rodata : ALIGN(4K) {
-        *(.rodata .rodata.*)
-    }
-
-    .data : ALIGN(4K) {
-        
-        *(.data .data.*)
-    }
+        __stack_top = . + 0x4000;  
+    } > RAM
 }
