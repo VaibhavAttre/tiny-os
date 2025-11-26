@@ -37,9 +37,10 @@ So I decided to take on the challenge of writing a small OS:
   - Minimal `kprintf` implementation
 - [x] **Panic Handling**
   - Kernel `panic()` that prints an error and halts
-- [ ] **Trap & Exception Handling**
+- [x] **Trap & Exception Handling**
   - Set up trap vector
   - Basic fault / exception reporting
+  - Set up running in S Mode instead of M mode
 
 ---
 
