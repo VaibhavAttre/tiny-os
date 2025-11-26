@@ -1,9 +1,10 @@
 RISCV_CC  := riscv64-unknown-elf-gcc
 RISCV_LD  := riscv64-unknown-elf-ld
 
-CFLAGS    := -Wall -Wextra -ffreestanding -nostdlib -nostartfiles \
+CFLAGS    := -g -Wall -Wextra -ffreestanding -nostdlib -nostartfiles \
              -march=rv64imac -mabi=lp64 -mcmodel=medany \
              -Iinclude
+
 
 LDFLAGS   := -T linker.ld -nostdlib
 
@@ -13,7 +14,9 @@ OBJS := $(BUILD)/boot.o \
 		$(BUILD)/kernel.o \
 		$(BUILD)/uart.o \
 		$(BUILD)/panic.o \
-		$(BUILD)/printf.o
+		$(BUILD)/printf.o \
+		$(BUILD)/ktrap.o \
+		$(BUILD)/trap.o
 
 all: kernel.elf
 
@@ -35,6 +38,12 @@ $(BUILD)/kernel.o: src/kernel/kernel.c | $(BUILD)
 $(BUILD)/printf.o: src/kernel/printf.c | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD)/ktrap.o: src/kernel/trap.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/trap.o: src/arch/riscv/ktrap.S | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
 kernel.elf: $(OBJS) linker.ld
 	$(RISCV_LD) $(LDFLAGS) -o $@ $(OBJS)
 
@@ -44,9 +53,18 @@ run: kernel.elf
 	  -machine virt \
 	  -bios none \
 	  -kernel kernel.elf \
-	  -nographic
+	  -nographic \
+
+run-gdb: kernel.elf
+	qemu-system-riscv64 \
+	  -machine virt \
+	  -bios none \
+	  -kernel kernel.elf \
+	  -nographic \
+	  -S -s
 
 clean:
-	rm -f $(BUILD) kernel.elf
+	rm -rf $(BUILD) 
+	rm -f kernel.elf
 
 .PHONY: all run clean

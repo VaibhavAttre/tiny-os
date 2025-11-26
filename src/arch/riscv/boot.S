@@ -1,30 +1,75 @@
-.section .init
+.section .text
 .globl _start
-.type _start, @function
+.align 2
 
 _start:
-    /* Set up the stack pointer */
-    la sp, __stack_top
 
-    la t0, __bss_start
-    la t1, __bss_end
-    /* Zero out the .bss section */
+    la   t0, mtrap
+    andi t0, t0, -4
+    csrw mtvec, t0
 
-1:  bge t0, t1, 2f
-    sb zero, 0(t0)
+    csrr t0, mstatus
+    li   t1, ~(1 << 3)       
+    and  t0, t0, t1
+    csrw mstatus, t0
+
+    li   t0, 0
+    csrw mie, t0
+
+    la   sp, __stack_top
+    andi sp, sp, -16
+
+    la   t0, __bss_start
+    la   t1, __bss_end
+1:
+    bge  t0, t1, 2f
+    sb   zero, 0(t0)
     addi t0, t0, 1
-    j 1b
+    j    1b
 
-2:  /* Call the main function */
-    call kmain
+2:
+    li   t0, -1             
+    csrw pmpaddr0, t0
+    li   t0, 0x0f           
+    csrw pmpcfg0, t0
 
-3:
-    /* Infinite loop to halt the system */
-    wfi
-    j 3b
+    la   t0, trap_entry
+    csrw stvec, t0
 
-    .size  _start, .-_start
-    .extern __bss_start
-    .extern __bss_end
-    .extern __stack_top
-    .extern kmain
+    li   t0, 0xffff
+    csrw medeleg, t0
+    csrw mideleg, t0
+
+    csrr t0, mstatus
+    li   t1, ~(3 << 11)     
+    and  t0, t0, t1
+    li   t1, (1 << 11)       
+    or   t0, t0, t1
+    ori  t0, t0, (1 << 5)    
+    csrw mstatus, t0
+
+    la   t0, kmain
+    csrw mepc, t0
+
+    li   t0, 0
+    csrw satp, t0
+
+    mret
+
+    j mtrap                
+
+.size _start, .-_start
+
+.align 2
+.globl mtrap
+mtrap:
+    li t0, 0x10000000
+    li t1, 'M'
+    sb t1, 0(t0)
+1:  j 1b
+
+.extern __bss_start
+.extern __bss_end
+.extern __stack_top
+.extern kmain
+.extern trap_entry
