@@ -1,34 +1,42 @@
 #include <stdint.h>
 #include "riscv.h"
 #include "kernel/trap.h"
+#include "timer.h"
 #include "kernel/printf.h"
-
-extern void trap_entry(void);
 
 void trap_init(void) {
     
     // Set the trap handler address
-    write_csr(stvec, (uintptr_t)trap_entry);
-    kprintf("Trap handler initialized at address: 0x%lx\n", read_csr(stvec));
+    extern void trap_entry(void);
+    uint64_t x = (uint64_t)trap_entry;
+    w_stvec(x);
 }
 
 void trap_handler(void) {
 
     //scause[63] indicates whether the trap is an interrupt or an exception
     //scuase[62:0] indicates the code
-    kprintf("In trap handler\n");
+    
     uint64_t scause = read_csr(scause);
-    uint64_t interrupt = scause >> 63;
-    uint64_t exception_code = scause & 0xfff;
+    uint64_t interrupt = scause_is_interrupt(scause);
+    uint64_t exception_code = scause_code(scause);
     uint64_t sepc = read_csr(sepc);
     uint64_t stval = read_csr(stval);
 
-    kprintf("Trap occurred! scause: 0x%lx\n", scause);
+    //kprintf("Trap occurred! scause: 0x%lx\n", scause);
     
     if (interrupt == 1) { // Interrupt
-        kprintf("Interrupt occurred! Code: %lu\n", exception_code);
-        kprintf("Will handle interrupts later");
-        return;
+        if(exception_code == 1)  {
+            
+            ticks++;
+            
+            clear_csr_bits(sip, SIP_SSIP);
+
+            if((ticks % 100) == 0) {
+                kprintf("tick %d\n", ticks);
+            }
+            return;
+        }
     } else { // Exception
         kprintf("Exception occurred! Code: %lu\n", exception_code);
 

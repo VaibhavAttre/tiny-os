@@ -40,10 +40,15 @@ do {                                             \
                   :: "rK"(__v));                 \
 } while (0)
 
+//sie defines what intterrups are allowed
+//sip is the current pending interrupt
 
-#define SSTATUS_SIE      (1UL << 1)
-#define SSTATUS_SPIE     (1UL << 5)
+#define SSTATUS_SIE      (1UL << 1) //0 = interrupts not taken in S-mode, 1 = interrupts may be taken
+#define SSTATUS_SPIE     (1UL << 5) //sstatus.SIE before trapped
 #define SSTATUS_SPP      (1UL << 8)
+
+#define SIE_SSIE (1UL << 1) 
+#define SIP_SSIP (1UL << 1) //is a software interrupt waiting to be handled
 
 #define MSTATUS_MIE      (1UL << 3)
 #define MSTATUS_MPIE     (1UL << 7)
@@ -97,3 +102,12 @@ static inline void sstatus_disable_sie(void)
 {
     clear_csr_bits(sstatus, SSTATUS_SIE);
 }
+
+/*
+scause layout:
+bit 63: 1/0 for interrupt/exception
+lower bits = cause 
+*/
+
+static inline int scause_is_interrupt(uint64_t s) {return (int) (s >> 63);}
+static inline uint64_t scause_code(uint64_t s) {return s & 0xfff;}

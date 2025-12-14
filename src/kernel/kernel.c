@@ -1,6 +1,7 @@
 #include <drivers/uart.h>
 #include <kernel/printf.h>
 #include <kernel/trap.h>
+#include "riscv.h"
 
 void kmain(void) {
 
@@ -10,17 +11,11 @@ void kmain(void) {
                  
     //init systems
     uart_init();
-    kprintf("HII\n");
+    kprintf("tiny-os booted\n");
     trap_init();    
-    
-    //panic("Kernel encountered a fatal error.");
-    kprintf("%d\n", 1+2);
-    asm volatile ("ecall");
-    kprintf("Back to kmain after ecall\n");
-
-    kprintf("Testing illegal instr\n");
-    asm volatile (".word 0xffffffff"); //illegal instruction
-    kprintf("Back to kmain after illegal instr\n");
+        
+    set_csr_bits(sie, SIE_SSIE);
+    sstatus_enable_sie();
 
     while (1)
     {

@@ -16,7 +16,9 @@ OBJS := $(BUILD)/boot.o \
 		$(BUILD)/panic.o \
 		$(BUILD)/printf.o \
 		$(BUILD)/ktrap.o \
-		$(BUILD)/trap.o
+		$(BUILD)/trap.o \
+		$(BUILD)/mtrap.o \
+		$(BUILD)/timer.o 
 
 all: kernel.elf
 
@@ -43,6 +45,13 @@ $(BUILD)/ktrap.o: src/kernel/trap.c | $(BUILD)
 
 $(BUILD)/trap.o: src/arch/riscv/ktrap.S | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/mtrap.o: src/arch/riscv/mtrap.S | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/timer.o: src/kernel/timer.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
 
 kernel.elf: $(OBJS) linker.ld
 	$(RISCV_LD) $(LDFLAGS) -o $@ $(OBJS)

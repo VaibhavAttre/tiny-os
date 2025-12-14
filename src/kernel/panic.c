@@ -1,3 +1,4 @@
+//panic.c
 #include <kernel/printf.h>
 #include <drivers/uart.h>
 

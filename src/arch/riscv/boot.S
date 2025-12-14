@@ -54,6 +54,26 @@ _start:
     li   t0, 0
     csrw satp, t0
 
+    la t0, mtrap_entry
+    csrw mtvec, t0
+
+    li t0, (1 << 7)
+    csrs mie, t0 /*enable machine timer interrupts*/
+
+    li t0, (1 <<1) /*delegate software interrupts to smode*/
+    csrs mideleg, t0
+
+    csrr t1, mhartid
+    li t0, 0x02004000 //clintbase + 4000
+    slli t2, t1, 3 
+    add t0, t0, t2 // &mtimecmp[hart]
+
+    li t3, 0x0200BFF8 //&mtime
+    ld t4, 0(t3) //now
+    li t5, 100000 //interval
+    add t4, t4, t5
+    sd t4, 0(t0)
+
     mret
 
     j mtrap                
