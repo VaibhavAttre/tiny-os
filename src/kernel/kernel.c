@@ -1,6 +1,7 @@
 #include <drivers/uart.h>
 #include <kernel/printf.h>
 #include <kernel/trap.h>
+#include "kernel/sched.h"
 #include "riscv.h"
 
 void kmain(void) {
@@ -19,7 +20,9 @@ void kmain(void) {
 
     while (1)
     {
-        /* code */
+        if(need_switch) {
+            yield();
+        }
     }
     
 }

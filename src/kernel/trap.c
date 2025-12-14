@@ -3,6 +3,7 @@
 #include "kernel/trap.h"
 #include "timer.h"
 #include "kernel/printf.h"
+#include "kernel/clock.h"
 
 void trap_init(void) {
     
@@ -27,14 +28,10 @@ void trap_handler(void) {
     
     if (interrupt == 1) { // Interrupt
         if(exception_code == 1)  {
-            
-            ticks++;
-            
+                
             clear_csr_bits(sip, SIP_SSIP);
 
-            if((ticks % 100) == 0) {
-                kprintf("tick %d\n", ticks);
-            }
+            clockinterrupt();
             return;
         }
     } else { // Exception

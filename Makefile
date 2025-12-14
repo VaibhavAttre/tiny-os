@@ -18,7 +18,9 @@ OBJS := $(BUILD)/boot.o \
 		$(BUILD)/ktrap.o \
 		$(BUILD)/trap.o \
 		$(BUILD)/mtrap.o \
-		$(BUILD)/timer.o 
+		$(BUILD)/timer.o \
+		$(BUILD)/clock.o \
+		$(BUILD)/sched.o \
 
 all: kernel.elf
 
@@ -50,6 +52,12 @@ $(BUILD)/mtrap.o: src/arch/riscv/mtrap.S | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/timer.o: src/kernel/timer.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/clock.o: src/kernel/clock.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/sched.o: src/kernel/sched.c | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
 
