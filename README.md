@@ -46,10 +46,10 @@ So I decided to take on the challenge of writing a small OS:
 
 ### Phase 2 — Time & Interrupts
 
-- [ ] **Timer Interrupts**
+- [x] **Timer Interrupts**
   - Configure machine / supervisor timer
   - Basic tick counter
-- [ ] **Preemptive Hooks (future)**
+- [x] **Preemptive Hooks (future)**
   - Use timer as a basis for scheduling later on
 
 ---
