@@ -8,6 +8,15 @@ void consputchar(char c) {
     uart_putc(c);
 }
 
+static void printptr(uint64_t ptr) {
+
+    consputchar('0');
+    consputchar('x');
+    for(int i = 60; i >= 0; i -= 4) {
+        consputchar("0123456789abcdef"[(ptr >> i) & 0xF]);
+    }
+}
+
 static void printnum(long long x, int base, int sign) {
 
     char buf[32];
@@ -40,6 +49,7 @@ int kprintf(const char *fmt, ...) {
     va_list ap;
     const char *p;
     int i;
+    uint64_t v;
     char *s;
 
     va_start(ap, fmt);
@@ -76,6 +86,10 @@ int kprintf(const char *fmt, ...) {
                 break;
             case '%':
                 consputchar('%');
+                break;
+            case 'p':
+                v = va_arg(ap, uint64_t);
+                printptr(v);
                 break;
             default:
                 consputchar('%');

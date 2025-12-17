@@ -14,13 +14,19 @@ void kmain(void) {
     //init systems
     uart_init();
     trap_init();    
-    kvminit();
+    kinit();
     kvminit();
     kvmenable();
     set_csr_bits(sie, SIE_SSIE);
     sstatus_enable_sie();
 
     kprintf("tiny-os booted\n");
+
+    kprintf("about to fault\n");
+    volatile uint64_t x = *(volatile uint64_t*)0x0;
+    (void)x;
+    kprintf("you should NOT see this\n");
+
 
     while (1)
     {

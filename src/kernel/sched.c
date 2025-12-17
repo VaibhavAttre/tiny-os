@@ -17,7 +17,7 @@ void yield() {
     //kprintf("no cntxt switch\n");
 }
 
-void sched_ticks() {
+void sched_tick() {
     if((ticks % QUANT_TICKS) == 0) {
         need_switch = 1;
     }

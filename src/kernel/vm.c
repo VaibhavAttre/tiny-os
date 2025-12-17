@@ -3,6 +3,7 @@
 #include "sv39.h"
 #include "kernel/kalloc.h"
 #include "kernel/panic.h"
+#include "kernel/printf.h"
 
 static pagetable_t kpt;
 
@@ -43,6 +44,19 @@ static int mappages(pagetable_t pt, uint64_t va, uint64_t pa, uint64_t sz, uint6
     return 0;
 }
 
+/*
+DEBUG FUNC
+*/
+static void dump_pte(pagetable_t pt, uint64_t va) {
+    pte_t *pte = walk(pt, va, 0);
+    if (!pte) { kprintf("va %p: no pte\n", (void*)va); return; }
+    kprintf("va %p: pte=%p pa=%p flags=%p\n",
+            (void*)va,
+            (void*)(*pte),
+            (void*)PTE2PA(*pte),
+            (void*)(*pte & 0x3FF));
+}
+
 void kvminit(void) {
 
     kpt = (pagetable_t)kalloc();
@@ -54,11 +68,15 @@ void kvminit(void) {
         panic("kvminit mapping err");
     }
 
+    //map UART to 0x100... wtv it is 
     if(mappages(kpt, 0x10000000UL, 0x10000000UL, PGSIZE, PTE_R|PTE_W|PTE_A|PTE_D) < 0) {
         panic("err");
     }
 
-    //map UART to 0x100... wtv it is 
+    //DEBUG
+    dump_pte(kpt, RAM_BASE);
+    dump_pte(kpt, 0x10000000UL);
+    dump_pte(kpt, 0x0);    
 }
 
 void kvmenable(void) {

@@ -4,6 +4,7 @@
 #include "timer.h"
 #include "kernel/printf.h"
 #include "kernel/clock.h"
+#include "kernel/sched.h"
 
 void trap_init(void) {
     

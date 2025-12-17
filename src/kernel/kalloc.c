@@ -20,7 +20,7 @@ static void freerange(uint64_t start, uint64_t end) {
     uint64_t page = PGRUP(start);
     for(; page + PGSIZE <= end; page += PGSIZE) {
 
-        kfree(page);
+        kfree((void*)page);
     }
 }
 
