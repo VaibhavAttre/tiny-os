@@ -32,6 +32,10 @@ void trap_handler(void) {
             clear_csr_bits(sip, SIP_SSIP);
 
             clockinterrupt();
+
+            if(need_switch) {
+                yield();
+            }
             return;
         }
     } else { // Exception

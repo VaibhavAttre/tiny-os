@@ -3,6 +3,7 @@
 #include <kernel/trap.h>
 #include "kernel/sched.h"
 #include "riscv.h"
+#include "kernel/vm.h"
 
 void kmain(void) {
 
@@ -12,14 +13,18 @@ void kmain(void) {
                  
     //init systems
     uart_init();
-    kprintf("tiny-os booted\n");
     trap_init();    
-        
+    kvminit();
+    kvminit();
+    kvmenable();
     set_csr_bits(sie, SIE_SSIE);
     sstatus_enable_sie();
 
+    kprintf("tiny-os booted\n");
+
     while (1)
     {
+        asm volatile("wfi");
         if(need_switch) {
             yield();
         }

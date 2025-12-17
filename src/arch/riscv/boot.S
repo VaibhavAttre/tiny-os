@@ -36,7 +36,7 @@ _start:
     la   t0, trap_entry
     csrw stvec, t0
 
-    li   t0, 0xffff
+    li   t0, (1<<1) //SSIP bit
     csrw medeleg, t0
     csrw mideleg, t0
 

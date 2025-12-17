@@ -21,6 +21,8 @@ OBJS := $(BUILD)/boot.o \
 		$(BUILD)/timer.o \
 		$(BUILD)/clock.o \
 		$(BUILD)/sched.o \
+		$(BUILD)/kalloc.o \
+		$(BUILD)/vm.o \
 
 all: kernel.elf
 
@@ -60,6 +62,11 @@ $(BUILD)/clock.o: src/kernel/clock.c | $(BUILD)
 $(BUILD)/sched.o: src/kernel/sched.c | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD)/kalloc.o: src/kernel/kalloc.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+	
+$(BUILD)/vm.o: src/kernel/vm.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
 kernel.elf: $(OBJS) linker.ld
 	$(RISCV_LD) $(LDFLAGS) -o $@ $(OBJS)

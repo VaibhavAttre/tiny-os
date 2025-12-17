@@ -3,13 +3,11 @@
 #include "kernel/printf.h"
 #include "kernel/sched.h"
 
-#define Y_TICKS 200
+#define TICK_HZ 100
+#define QUANT_TICKS 20
 
 void clockinterrupt() {
 
     ticks++;
-    if((ticks % Y_TICKS) == 0) {
-        need_switch = 1;
-    }
-    
+    sched_tick();
 }
