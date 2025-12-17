@@ -96,7 +96,14 @@ So I decided to take on the challenge of writing a small OS:
 
 ---
 
-### Phase 7 — Init & Shell
+### Phase 7 — Signals
+
+- [ ] **Signals**
+  - Add linux inspired signals
+    
+---
+
+### Phase 8 — Init & Shell
 
 - [ ] **Init Process**
   - First user process started by the kernel
