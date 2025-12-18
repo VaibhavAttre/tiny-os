@@ -7,6 +7,13 @@
 
 static pagetable_t kpt;
 
+extern char __text_start[], __text_end[];
+extern char __rodata_start[], __rodata_end[];
+extern char __data_start[], __data_end[];
+extern char __bss_start[], __bss_end[];
+extern char __stack_bottom[], __stack_top[];
+extern char _end[];
+
 //3 depth tree tyle page table walk
 static pte_t * walk(pagetable_t pt, uint64_t va, int alloc) {
 
@@ -44,6 +51,15 @@ static int mappages(pagetable_t pt, uint64_t va, uint64_t pa, uint64_t sz, uint6
     return 0;
 }
 
+static void kmap_range(uint64_t a, uint64_t b, uint64_t perm) {
+
+    a = PGRDOWN(a);
+    b = PGRUP(b);
+    if (a <= b) return;
+    //dir map for now
+    if(mappages(kpt, a, a, a - b, perm) < 0) panic("kvminit");
+}
+
 /*
 DEBUG FUNC
 */
@@ -62,25 +78,35 @@ void kvminit(void) {
     kpt = (pagetable_t)kalloc();
     if(!kpt) panic("kvminit no mem err");
 
-    //map all pages as RWX for now
+    kmap_range((uint64_t)__text_start, (uint64_t)__text_end, PTE_R|PTE_X|PTE_A);
+    kmap_range((uint64_t)__rodata_start, (uint64_t)__rodata_end, PTE_R|PTE_A);
+    kmap_range((uint64_t)__data_start, (uint64_t)__data_end, PTE_R|PTE_W|PTE_A|PTE_D);
+    kmap_range((uint64_t)__bss_start, (uint64_t)__bss_end, PTE_R|PTE_W|PTE_A|PTE_D);
+    kmap_range((uint64_t)__stack_bottom, (uint64_t)__stack_top, PTE_R|PTE_W|PTE_A|PTE_D);
 
-    if(mappages(kpt, RAM_BASE, RAM_BASE, RAM_SIZE, PTE_R|PTE_W|PTE_X|PTE_A|PTE_D) < 0) {
-        panic("kvminit mapping err");
+    //kprintf("reached A");
+    //unused as RW (such as heap)
+    uint64_t start = PGRUP((uint64_t)_end);
+    uint64_t end = RAM_BASE + RAM_SIZE;
+    if(start < end) {
+        kmap_range(start, end, PTE_R|PTE_W|PTE_A|PTE_D);
     }
 
-    //map UART to 0x100... wtv it is 
-    if(mappages(kpt, 0x10000000UL, 0x10000000UL, PGSIZE, PTE_R|PTE_W|PTE_A|PTE_D) < 0) {
-        panic("err");
-    }
-
+    //kprintf("reached B");
+    //UART
+    kmap_range(0x10000000UL, 0x10000000UL + PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
     //DEBUG
-    dump_pte(kpt, RAM_BASE);
+    dump_pte(kpt, (uint64_t)__text_start);
+    dump_pte(kpt, (uint64_t)__rodata_start);
+    dump_pte(kpt, (uint64_t)__data_start);
     dump_pte(kpt, 0x10000000UL);
-    dump_pte(kpt, 0x0);    
+    dump_pte(kpt, 0x0);  
 }
 
 void kvmenable(void) {
     sfence_vma();
     w_satp(MAKE_SATP((uint64_t)kpt));
     sfence_vma();
+
+    kprintf("Reached C");
 }

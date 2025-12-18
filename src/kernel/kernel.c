@@ -2,6 +2,7 @@
 #include <kernel/printf.h>
 #include <kernel/trap.h>
 #include "kernel/sched.h"
+#include "kernel/kalloc.h"
 #include "riscv.h"
 #include "kernel/vm.h"
 
@@ -23,8 +24,8 @@ void kmain(void) {
     kprintf("tiny-os booted\n");
 
     kprintf("about to fault\n");
-    volatile uint64_t x = *(volatile uint64_t*)0x0;
-    (void)x;
+    extern char __text_start[];
+    *(volatile char*)__text_start = 1;
     kprintf("you should NOT see this\n");
 
 

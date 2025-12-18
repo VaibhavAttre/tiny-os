@@ -25,7 +25,7 @@ void trap_handler(void) {
     uint64_t sepc = read_csr(sepc);
     uint64_t stval = read_csr(stval);
 
-    //kprintf("Trap occurred! scause: 0x%lx\n", scause);
+    kprintf("Trap occurred! scause: 0x%lx\n", scause);
     
     if (interrupt == 1) { // Interrupt
         if(exception_code == 1)  {
@@ -46,6 +46,10 @@ void trap_handler(void) {
             kprintf("S mode Ecall ignoring right now: 0x%lx\n", sepc);
             write_csr(sepc, sepc + 4);
             return;
+        } 
+        else if (exception_code == 12 || exception_code == 13 || exception_code == 15) {
+            kprintf("S mode page fault error\n");
+            while (1);
         } else {
             kprintf("Unhandled exception! sepc: 0x%lx, stval: 0x%lx\n", sepc, stval);
             while (1);

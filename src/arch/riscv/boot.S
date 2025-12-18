@@ -34,10 +34,11 @@ _start:
     csrw pmpcfg0, t0
 
     la   t0, trap_entry
+    andi t0, t0, -4
     csrw stvec, t0
 
     li   t0, (1<<1) //SSIP bit
-    csrw medeleg, t0
+    //csrw medeleg, t0
     csrw mideleg, t0
 
     csrr t0, mstatus
@@ -45,7 +46,7 @@ _start:
     and  t0, t0, t1
     li   t1, (1 << 11)       
     or   t0, t0, t1
-    ori  t0, t0, (1 << 5)    
+    ori  t0, t0, (1 << 7)    
     csrw mstatus, t0
 
     la   t0, kmain
@@ -60,8 +61,12 @@ _start:
     li t0, (1 << 7)
     csrs mie, t0 /*enable machine timer interrupts*/
 
+    li  t0, (1<<2) | (1<<3) | (1<<8) | (1<<9) | (1<<12) | (1<<13) | (1<<15)
+    csrw medeleg, t0
+
+
     li t0, (1 <<1) /*delegate software interrupts to smode*/
-    csrs mideleg, t0
+    csrw mideleg, t0
 
     csrr t1, mhartid
     li t0, 0x02004000 //clintbase + 4000
