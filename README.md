@@ -56,7 +56,7 @@ So I decided to take on the challenge of writing a small OS:
 
 ### Phase 3 — Virtual Memory
 
-- [ ] **Page Tables**
+- [x] **Page Tables**
   - Set up Sv39 paging
   - Map kernel code, data, stack, and devices
 - [ ] **Frame Allocator**

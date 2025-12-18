@@ -67,6 +67,7 @@ $(BUILD)/kalloc.o: src/kernel/kalloc.c | $(BUILD)
 	
 $(BUILD)/vm.o: src/kernel/vm.c | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+	
 
 kernel.elf: $(OBJS) linker.ld
 	$(RISCV_LD) $(LDFLAGS) -o $@ $(OBJS)
@@ -75,6 +76,7 @@ kernel.elf: $(OBJS) linker.ld
 run: kernel.elf
 	qemu-system-riscv64 \
 	  -machine virt \
+	  -smp 1 \
 	  -bios none \
 	  -kernel kernel.elf \
 	  -nographic \

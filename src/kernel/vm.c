@@ -55,9 +55,9 @@ static void kmap_range(uint64_t a, uint64_t b, uint64_t perm) {
 
     a = PGRDOWN(a);
     b = PGRUP(b);
-    if (a <= b) return;
+    if (b <= a) return;
     //dir map for now
-    if(mappages(kpt, a, a, a - b, perm) < 0) panic("kvminit");
+    if(mappages(kpt, a, a, b- a, perm) < 0) panic("kvminit");
 }
 
 /*
@@ -104,9 +104,14 @@ void kvminit(void) {
 }
 
 void kvmenable(void) {
+
+    //kprintf("Reached C");
     sfence_vma();
+    
+    //kprintf("Reached D");
     w_satp(MAKE_SATP((uint64_t)kpt));
+    
+    //kprintf("Reached E");
     sfence_vma();
 
-    kprintf("Reached C");
 }

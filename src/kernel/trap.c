@@ -6,6 +6,8 @@
 #include "kernel/clock.h"
 #include "kernel/sched.h"
 
+
+
 void trap_init(void) {
     
     // Set the trap handler address
@@ -25,35 +27,25 @@ void trap_handler(void) {
     uint64_t sepc = read_csr(sepc);
     uint64_t stval = read_csr(stval);
 
-    kprintf("Trap occurred! scause: 0x%lx\n", scause);
-    
-    if (interrupt == 1) { // Interrupt
-        if(exception_code == 1)  {
-                
-            clear_csr_bits(sip, SIP_SSIP);
+    //kprintf("Trap occurred! scause: %p\n", (void*)scause);    
+    if (interrupt && exception_code == 1) {
+        clear_csr_bits(sip, SIP_SSIP);
+        clockinterrupt();
+        return;
+    } 
+    if(!interrupt && exception_code == 9) { // S mode ecall
 
-            clockinterrupt();
-
-            if(need_switch) {
-                yield();
-            }
-            return;
-        }
-    } else { // Exception
-        kprintf("Exception occurred! Code: %lu\n", exception_code);
-
-        if(exception_code == 9) { 
-            kprintf("S mode Ecall ignoring right now: 0x%lx\n", sepc);
-            write_csr(sepc, sepc + 4);
-            return;
-        } 
-        else if (exception_code == 12 || exception_code == 13 || exception_code == 15) {
-            kprintf("S mode page fault error\n");
-            while (1);
-        } else {
-            kprintf("Unhandled exception! sepc: 0x%lx, stval: 0x%lx\n", sepc, stval);
-            while (1);
-        }
+        kprintf("ecall sepc=%p\n", (void*)sepc);
+        write_csr(sepc, sepc+4);
+        return;
     }
 
+    if(!interrupt && (exception_code == 12|| exception_code == 13 || exception_code == 15)) {
+
+        kprintf("Page fault code=%d sepc=%p stval=%p\n", (int)exception_code, (void*)sepc, (void*)stval);
+        while(1){}
+    }
+
+    kprintf("Unhandled exception");
+    while(1) {}
 }
