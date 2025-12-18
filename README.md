@@ -59,7 +59,7 @@ So I decided to take on the challenge of writing a small OS:
 - [x] **Page Tables**
   - Set up Sv39 paging
   - Map kernel code, data, stack, and devices
-- [ ] **Frame Allocator**
+- [x] **Frame Allocator**
   - Simple physical frame allocator
   - Page allocation / freeing APIs
 
@@ -132,6 +132,8 @@ This is my **first OS project**, so I’m deliberately starting simple:
   - Design and implement a more **complex file system**
   - Explore caching, journaling, and robustness
 
+- **Optimizations**
+  Implement low-level optimizations such as buddy allocators
 ---
 
 ## Goals
