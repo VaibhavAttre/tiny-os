@@ -41,7 +41,7 @@ void sched_init() {
         procs[i].start = 0;
         procs[i].kstack_base = 0;
         procs[i].kstack_top = 0;
-
+        procs[i].chan = 0;
         procs[i].ctx.ra = 0;
         procs[i].ctx.sp = 0;
         procs[i].ctx.s0 = 0;
@@ -74,7 +74,7 @@ int sched_create_kthread(void (*func)(void)) {
             procs[i].kstack_base = stack_base;
             procs[i].kstack_top = (uint64_t)stack_base + KSTACK_SIZE;
             procs[i].start = func;
-
+            procs[i].chan = 0;
             *(struct proc **) stack_base = &procs[i];
 
             procs[i].ctx.sp = procs[i].kstack_top;
@@ -96,6 +96,38 @@ void yield() {
     need_switch = 0;
     curr->state = RUNNABLE;
     swtch(&curr->ctx, &scheduler_context);
+}
+
+void sleep(void * chan) {
+
+    if(!curr) return;
+
+    int wasinterrupton = (r_sstatus() & SSTATUS_SIE) != 0;
+
+    sstatus_disable_sie();
+
+    curr->chan = chan;
+    curr->state = SLEEPING;
+    need_switch = 0;
+    swtch(&curr->ctx, &scheduler_context);
+    curr->chan = 0;
+    if(wasinterrupton) sstatus_enable_sie();
+}
+
+void wakeup(void * chan) {
+
+    int wasinterrupton = (r_sstatus() & SSTATUS_SIE) != 0;
+
+    sstatus_disable_sie();
+    for(int i = 0; i < NPROC; ++i) {
+
+        if(procs[i].state == SLEEPING && procs[i].chan == chan) {
+            procs[i].state = RUNNABLE;
+            procs[i].chan = 0;
+        }
+    }
+
+    if(wasinterrupton) sstatus_enable_sie();
 }
 
 //Round robin for now

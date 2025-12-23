@@ -29,7 +29,7 @@ void test_vm() {
     kprintf("heap page RW ok\n");
 
 }
-extern volatile uint64_t ticks;   // or whatever your ticks type is
+extern volatile uint64_t ticks;  
 
 static void threadA(void) {
     uint64_t last = 0;
@@ -41,25 +41,48 @@ static void threadA(void) {
     }
 }
 
+static int bchan;
+static void *CHAN_B = &bchan;
+
 static void threadB(void) {
     uint64_t last = 0;
+    uint64_t seen = 0;
+
     for (;;) {
         if (ticks != last) {
             last = ticks;
+            seen++;
+
             kprintf("  [B] tick=%d\n", (int)ticks);
+
+            if (seen % 6 == 0) {
+                kprintf("  [B] sleeping on CHAN_B...\n");
+                sleep(CHAN_B);
+                kprintf("  [B] woke!\n");
+            }
         }
     }
 }
 
 static void threadC(void) {
     uint64_t last = 0;
+    uint64_t seen = 0;
+
     for (;;) {
         if (ticks != last) {
             last = ticks;
+            seen++;
+
             kprintf("    [C] tick=%d\n", (int)ticks);
+
+            if (seen % 6 == 2) {
+                kprintf("    [C] wakeup(CHAN_B)\n");
+                wakeup(CHAN_B);
+            }
         }
     }
 }
+
 
 void kmain(void) {
     uart_init();

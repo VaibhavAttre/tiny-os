@@ -14,6 +14,7 @@ typedef enum {
     UNUSED = 0,
     RUNNABLE = 1,
     RUNNING = 2,
+    SLEEPING = 3,
 } proc_state_t;
 
 struct context {
@@ -40,13 +41,15 @@ struct proc {
     void (*start)(void);
     void * kstack_base;
     uint64_t kstack_top;
+    void * chan;
 };
 
 void sched_init();
 int sched_create_kthread(void (*func)(void));
 void scheduler();
 void yield();
-
+void sleep(void * chan);
+void wakeup(void * chan);
 void sched_tick();
 
 //implementedin assmebly 
