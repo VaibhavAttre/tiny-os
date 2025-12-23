@@ -21,6 +21,7 @@ static struct proc * curr = 0;
 static void kthread_trampoline() {
 
     void (*func)(void) = curr->start;
+    sstatus_enable_sie();
     func();
 
     kprintf("kthread trampoline\n");
@@ -74,6 +75,8 @@ int sched_create_kthread(void (*func)(void)) {
             procs[i].kstack_top = (uint64_t)stack_base + KSTACK_SIZE;
             procs[i].start = func;
 
+            *(struct proc **) stack_base = &procs[i];
+
             procs[i].ctx.sp = procs[i].kstack_top;
             procs[i].ctx.ra = (uint64_t)kthread_trampoline;
             procs[i].state = RUNNABLE;
@@ -101,6 +104,7 @@ void scheduler() {
     for(;;) {
         int ran = 0;
         in_scheduler = 1;
+        sstatus_disable_sie();
         for(int i = 0; i < NPROC; ++i) {
 
             if (procs[i].state != RUNNABLE) continue;
@@ -108,7 +112,7 @@ void scheduler() {
             curr = &procs[i];
             curr->state = RUNNING;
             in_scheduler = 0;
-            sstatus_enable_sie();
+            //sstatus_enable_sie();
             swtch(&scheduler_context, &curr->ctx);
             in_scheduler = 1;
             //after it yeilds 

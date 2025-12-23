@@ -3,94 +3,149 @@
 .align 2
 .option norvc
 
+#define TF_RA      0
+#define TF_SP      8
+#define TF_GP      16
+#define TF_TP      24
+
+#define TF_T0      32
+#define TF_T1      40
+#define TF_T2      48
+
+#define TF_S0      56
+#define TF_S1      64
+
+#define TF_A0      72
+#define TF_A1      80
+#define TF_A2      88
+#define TF_A3      96
+#define TF_A4      104
+#define TF_A5      112
+#define TF_A6      120
+#define TF_A7      128
+
+#define TF_S2      136
+#define TF_S3      144
+#define TF_S4      152
+#define TF_S5      160
+#define TF_S6      168
+#define TF_S7      176
+#define TF_S8      184
+#define TF_S9      192
+#define TF_S10     200
+#define TF_S11     208
+
+#define TF_T3      216
+#define TF_T4      224
+#define TF_T5      232
+#define TF_T6      240
+
+#define TF_SEPC    248
+#define TF_SSTATUS 256
+#define TF_PAD     264
+
+#define TF_SIZE    272  
+
 trap_entry:
-    addi sp, sp, -(34*8)
 
-    sd ra, 0*8(sp)
-    sd sp, 1*8(sp)
-    sd gp, 2*8(sp)
-    sd tp, 3*8(sp)
+    addi sp, sp, -TF_SIZE
 
-    sd t0, 4*8(sp)
-    sd t1, 5*8(sp)
-    sd t2, 6*8(sp)
+    // Save registers
+    sd ra, TF_RA(sp)
+    sd gp, TF_GP(sp)
+    sd tp, TF_TP(sp)
 
-    sd s0, 7*8(sp)
-    sd s1, 8*8(sp)
+    sd t0, TF_T0(sp)
+    sd t1, TF_T1(sp)
+    sd t2, TF_T2(sp)
 
-    sd a0, 9*8(sp)
-    sd a1, 10*8(sp)
-    sd a2, 11*8(sp)
-    sd a3, 12*8(sp)
-    sd a4, 13*8(sp)
-    sd a5, 14*8(sp)
-    sd a6, 15*8(sp)
-    sd a7, 16*8(sp)
+    sd s0, TF_S0(sp)
+    sd s1, TF_S1(sp)
 
-    sd s2, 17*8(sp)
-    sd s3, 18*8(sp)
-    sd s4, 19*8(sp)
-    sd s5, 20*8(sp)
-    sd s6, 21*8(sp)
-    sd s7, 22*8(sp)
-    sd s8, 23*8(sp)
-    sd s9, 24*8(sp)
-    sd s10, 25*8(sp)
-    sd s11, 26*8(sp)
+    sd a0, TF_A0(sp)
+    sd a1, TF_A1(sp)
+    sd a2, TF_A2(sp)
+    sd a3, TF_A3(sp)
+    sd a4, TF_A4(sp)
+    sd a5, TF_A5(sp)
+    sd a6, TF_A6(sp)
+    sd a7, TF_A7(sp)
 
-    sd t3, 27*8(sp)
-    sd t4, 28*8(sp)
-    sd t5, 29*8(sp)
-    sd t6, 30*8(sp)
+    sd s2, TF_S2(sp)
+    sd s3, TF_S3(sp)
+    sd s4, TF_S4(sp)
+    sd s5, TF_S5(sp)
+    sd s6, TF_S6(sp)
+    sd s7, TF_S7(sp)
+    sd s8, TF_S8(sp)
+    sd s9, TF_S9(sp)
+    sd s10, TF_S10(sp)
+    sd s11, TF_S11(sp)
 
+    sd t3, TF_T3(sp)
+    sd t4, TF_T4(sp)
+    sd t5, TF_T5(sp)
+    sd t6, TF_T6(sp)
+
+    // Save interrupted SP into tf->sp
+    addi t0, sp, TF_SIZE
+    sd t0, TF_SP(sp)
+
+    // Save CSRs
     csrr t0, sepc
-    sd t0, 31*8(sp)
+    sd t0, TF_SEPC(sp)
     csrr t0, sstatus
-    sd t0, 32*8(sp)
+    sd t0, TF_SSTATUS(sp)
 
+    sd zero, TF_PAD(sp)
+
+    // Call C handler: a0 = &trapframe
+    mv a0, sp
     call trap_handler
 
-    ld t0, 31*8(sp)
+    // Restore CSRs (in case handler updated tf->sepc/sstatus)
+    ld t0, TF_SEPC(sp)
     csrw sepc, t0
-    ld t0, 32*8(sp)
+    ld t0, TF_SSTATUS(sp)
     csrw sstatus, t0
 
-    ld ra, 0*8(sp)
-    # don't restore sp from 1*8(sp)
-    ld gp, 2*8(sp)
-    ld tp, 3*8(sp)
+    // Restore registers
+    ld ra, TF_RA(sp)
+    ld gp, TF_GP(sp)
+    ld tp, TF_TP(sp)
 
-    ld t0, 4*8(sp)
-    ld t1, 5*8(sp)
-    ld t2, 6*8(sp)
+    ld t0, TF_T0(sp)
+    ld t1, TF_T1(sp)
+    ld t2, TF_T2(sp)
 
-    ld s0, 7*8(sp)
-    ld s1, 8*8(sp)
+    ld s0, TF_S0(sp)
+    ld s1, TF_S1(sp)
 
-    ld a0, 9*8(sp)
-    ld a1, 10*8(sp)
-    ld a2, 11*8(sp)
-    ld a3, 12*8(sp)
-    ld a4, 13*8(sp)
-    ld a5, 14*8(sp)
-    ld a6, 15*8(sp)
-    ld a7, 16*8(sp)
+    ld a0, TF_A0(sp)
+    ld a1, TF_A1(sp)
+    ld a2, TF_A2(sp)
+    ld a3, TF_A3(sp)
+    ld a4, TF_A4(sp)
+    ld a5, TF_A5(sp)
+    ld a6, TF_A6(sp)
+    ld a7, TF_A7(sp)
 
-    ld s2, 17*8(sp)
-    ld s3, 18*8(sp)
-    ld s4, 19*8(sp)
-    ld s5, 20*8(sp)
-    ld s6, 21*8(sp)
-    ld s7, 22*8(sp)
-    ld s8, 23*8(sp)
-    ld s9, 24*8(sp)
-    ld s10, 25*8(sp)
-    ld s11, 26*8(sp)
+    ld s2, TF_S2(sp)
+    ld s3, TF_S3(sp)
+    ld s4, TF_S4(sp)
+    ld s5, TF_S5(sp)
+    ld s6, TF_S6(sp)
+    ld s7, TF_S7(sp)
+    ld s8, TF_S8(sp)
+    ld s9, TF_S9(sp)
+    ld s10, TF_S10(sp)
+    ld s11, TF_S11(sp)
 
-    ld t3, 27*8(sp)
-    ld t4, 28*8(sp)
-    ld t5, 29*8(sp)
-    ld t6, 30*8(sp)
+    ld t3, TF_T3(sp)
+    ld t4, TF_T4(sp)
+    ld t5, TF_T5(sp)
+    ld t6, TF_T6(sp)
 
-    addi sp, sp, (34*8)
+    // Pop trapframe
+    addi sp, sp, TF_SIZE
     sret
