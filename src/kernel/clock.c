@@ -3,8 +3,7 @@
 #include "kernel/printf.h"
 #include "kernel/sched.h"
 
-#define TICK_HZ 100
-#define QUANT_TICKS 20
+#define TICK_HZ 10
 
 void clockinterrupt() {
 

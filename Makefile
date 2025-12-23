@@ -23,6 +23,7 @@ OBJS := $(BUILD)/boot.o \
 		$(BUILD)/sched.o \
 		$(BUILD)/kalloc.o \
 		$(BUILD)/vm.o \
+		$(BUILD)/swtch.o \
 
 all: kernel.elf
 
@@ -67,7 +68,9 @@ $(BUILD)/kalloc.o: src/kernel/kalloc.c | $(BUILD)
 	
 $(BUILD)/vm.o: src/kernel/vm.c | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
-	
+
+$(BUILD)/swtch.o: src/arch/riscv/swtch.S | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@	
 
 kernel.elf: $(OBJS) linker.ld
 	$(RISCV_LD) $(LDFLAGS) -o $@ $(OBJS)

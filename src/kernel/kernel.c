@@ -7,17 +7,8 @@
 #include "kernel/vm.h"
 #include "riscv.h"
 
-void kmain(void) {
-    uart_init();
-    trap_init();
-
-    kinit();
-    kvminit();
-    kvmenable();
-
-    set_csr_bits(sie, SIE_SSIE);
-    sstatus_enable_sie();
-
+void test_vm() {
+    
     /*Simple VM tests*/
     uint64_t satp = read_csr(satp);
     kprintf("satp=%p mode=%d\n", (void*)satp, (int)(satp >> 60));
@@ -37,15 +28,47 @@ void kmain(void) {
     kfree(pg);
     kprintf("heap page RW ok\n");
 
+}
+
+static void threadA(void) {
+    for (;;) {
+        kprintf("[A]\n");
+        for (volatile int i = 0; i < 200000; i++) { }
+        //yield();
+    }
+}
+
+static void threadB(void) {
+    for (;;) {
+        kprintf("  [B]\n");
+        for (volatile int i = 0; i < 200000; i++) { }
+       // yield();
+    }
+}
+
+void kmain(void) {
+    uart_init();
+    trap_init();
+
+    kinit();
+    kvminit();
+    kvmenable();
+    sched_init();
+
+    set_csr_bits(sie, SIE_SSIE);
+    sstatus_enable_sie();
+
+    //test_vm();
+   
     //BOOTED CORRECLTY SO FAR
     kprintf("tiny-os booted\n");
 
-    extern char __rodata_start[];
-    kprintf("testing rodata write at %p (should fault)\n", __rodata_start);
-    *(volatile char*)__rodata_start = 1;  // should fault if rodata is mapped R-only
+    if (sched_create_kthread(threadA) < 0) { kprintf("failed to create threadA\n"); while(1){} }
+    if (sched_create_kthread(threadB) < 0) { kprintf("failed to create threadB\n"); while(1){} }
+
+    scheduler();
 
     for (;;) {
         asm volatile("wfi");
-        if (need_switch) yield();
     }
 }

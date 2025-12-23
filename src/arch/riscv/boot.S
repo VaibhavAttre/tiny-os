@@ -75,7 +75,7 @@ _start:
 
     li t3, 0x0200BFF8 //&mtime
     ld t4, 0(t3) //now
-    li t5, 100000 //interval
+    li t5, 10000000 //interval
     add t4, t4, t5
     sd t4, 0(t0)
 
