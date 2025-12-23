@@ -32,7 +32,7 @@ void trap_handler(void) {
         clear_csr_bits(sip, SIP_SSIP);
         clockinterrupt();
         if ((ticks % 50) == 0) kprintf("tick=%d\n", ticks);
-        if(need_switch) yield();
+        if(need_switch && !in_scheduler) yield();
         return;
     } 
     if(!interrupt && exception_code == 9) { // S mode ecall

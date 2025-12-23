@@ -2,11 +2,13 @@
 #include <stdint.h>
 
 
-#define NPROC 2
+#define NPROC 3
 #define KSTACKS 1
 #define KSTACK_SIZE (4096 * KSTACKS)
+#define QUANT_TICKS 2
 
 extern volatile int need_switch;
+extern volatile int in_scheduler;
 
 typedef enum {
     UNUSED = 0,

@@ -10,10 +10,9 @@ https://danielmangum.com/posts/risc-v-bytes-timer-interrupts/
 https://book.rvemu.app/hardware-components/03-csrs.html
 */
 
-#define QUANT_TICKS 20000
 
 volatile int need_switch = 0;
-
+volatile int in_scheduler = 0;
 static struct proc procs[NPROC];
 static struct context scheduler_context;
 static struct proc * curr = 0;
@@ -96,19 +95,22 @@ void yield() {
     swtch(&curr->ctx, &scheduler_context);
 }
 
+//Round robin for now
 void scheduler() {
 
     for(;;) {
         int ran = 0;
+        in_scheduler = 1;
         for(int i = 0; i < NPROC; ++i) {
 
             if (procs[i].state != RUNNABLE) continue;
             ran = 1;
             curr = &procs[i];
             curr->state = RUNNING;
+            in_scheduler = 0;
             sstatus_enable_sie();
             swtch(&scheduler_context, &curr->ctx);
-
+            in_scheduler = 1;
             //after it yeilds 
             curr = 0;
         }

@@ -29,20 +29,35 @@ void test_vm() {
     kprintf("heap page RW ok\n");
 
 }
+extern volatile uint64_t ticks;   // or whatever your ticks type is
 
 static void threadA(void) {
+    uint64_t last = 0;
     for (;;) {
-        kprintf("[A]\n");
-        for (volatile int i = 0; i < 200000; i++) { }
-        //yield();
+        if (ticks != last) {      // once per tick
+            last = ticks;
+            kprintf("[A] tick=%d\n", (int)ticks);
+        }
     }
 }
 
 static void threadB(void) {
+    uint64_t last = 0;
     for (;;) {
-        kprintf("  [B]\n");
-        for (volatile int i = 0; i < 200000; i++) { }
-       // yield();
+        if (ticks != last) {
+            last = ticks;
+            kprintf("  [B] tick=%d\n", (int)ticks);
+        }
+    }
+}
+
+static void threadC(void) {
+    uint64_t last = 0;
+    for (;;) {
+        if (ticks != last) {
+            last = ticks;
+            kprintf("    [C] tick=%d\n", (int)ticks);
+        }
     }
 }
 
@@ -65,6 +80,7 @@ void kmain(void) {
 
     if (sched_create_kthread(threadA) < 0) { kprintf("failed to create threadA\n"); while(1){} }
     if (sched_create_kthread(threadB) < 0) { kprintf("failed to create threadB\n"); while(1){} }
+    if (sched_create_kthread(threadC) < 0) { kprintf("failed to create threadC\n"); while(1){} }
 
     scheduler();
 

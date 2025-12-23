@@ -1,76 +1,96 @@
 .section .text
 .globl trap_entry
 .align 2
+.option norvc
 
 trap_entry:
+    addi sp, sp, -(34*8)
 
-    addi sp, sp, -256
+    sd ra, 0*8(sp)
+    sd sp, 1*8(sp)
+    sd gp, 2*8(sp)
+    sd tp, 3*8(sp)
 
-    sd ra, 0(sp)
-    sd gp, 8(sp)
-    sd tp, 16(sp)
-    sd t0, 24(sp)
-    sd t1, 32(sp)
-    sd t2, 40(sp)
-    sd s0, 48(sp)
-    sd s1, 56(sp)
-    sd a0, 64(sp)
-    sd a1, 72(sp)
-    sd a2, 80(sp)
-    sd a3, 88(sp)
-    sd a4, 96(sp)
-    sd a5, 104(sp)
-    sd a6, 112(sp)
-    sd a7, 120(sp)
-    sd s2, 128(sp)
-    sd s3, 136(sp)
-    sd s4, 144(sp)
-    sd s5, 152(sp)
-    sd s6, 160(sp)
-    sd s7, 168(sp)
-    sd s8, 176(sp)
-    sd s9, 184(sp)
-    sd s10, 192(sp)
-    sd s11, 200(sp)
-    sd t3, 208(sp)
-    sd t4, 216(sp)
-    sd t5, 224(sp)
-    sd t6, 232(sp)
+    sd t0, 4*8(sp)
+    sd t1, 5*8(sp)
+    sd t2, 6*8(sp)
+
+    sd s0, 7*8(sp)
+    sd s1, 8*8(sp)
+
+    sd a0, 9*8(sp)
+    sd a1, 10*8(sp)
+    sd a2, 11*8(sp)
+    sd a3, 12*8(sp)
+    sd a4, 13*8(sp)
+    sd a5, 14*8(sp)
+    sd a6, 15*8(sp)
+    sd a7, 16*8(sp)
+
+    sd s2, 17*8(sp)
+    sd s3, 18*8(sp)
+    sd s4, 19*8(sp)
+    sd s5, 20*8(sp)
+    sd s6, 21*8(sp)
+    sd s7, 22*8(sp)
+    sd s8, 23*8(sp)
+    sd s9, 24*8(sp)
+    sd s10, 25*8(sp)
+    sd s11, 26*8(sp)
+
+    sd t3, 27*8(sp)
+    sd t4, 28*8(sp)
+    sd t5, 29*8(sp)
+    sd t6, 30*8(sp)
+
+    csrr t0, sepc
+    sd t0, 31*8(sp)
+    csrr t0, sstatus
+    sd t0, 32*8(sp)
 
     call trap_handler
 
-    ld ra, 0(sp)
-    ld gp, 8(sp)
-    ld tp, 16(sp)
-    ld t0, 24(sp)
-    ld t1, 32(sp)
-    ld t2, 40(sp)
-    ld s0, 48(sp)
-    ld s1, 56(sp)
-    ld a0, 64(sp)
-    ld a1, 72(sp)
-    ld a2, 80(sp)
-    ld a3, 88(sp)
-    ld a4, 96(sp)
-    ld a5, 104(sp)
-    ld a6, 112(sp)
-    ld a7, 120(sp)
-    ld s2, 128(sp)
-    ld s3, 136(sp)
-    ld s4, 144(sp)
-    ld s5, 152(sp)
-    ld s6, 160(sp)
-    ld s7, 168(sp)
-    ld s8, 176(sp)
-    ld s9, 184(sp)
-    ld s10, 192(sp)
-    ld s11, 200(sp)
-    ld t3, 208(sp)
-    ld t4, 216(sp)
-    ld t5, 224(sp)
-    ld t6, 232(sp)
+    ld t0, 31*8(sp)
+    csrw sepc, t0
+    ld t0, 32*8(sp)
+    csrw sstatus, t0
 
-    addi sp, sp, 256
+    ld ra, 0*8(sp)
+    # don't restore sp from 1*8(sp)
+    ld gp, 2*8(sp)
+    ld tp, 3*8(sp)
+
+    ld t0, 4*8(sp)
+    ld t1, 5*8(sp)
+    ld t2, 6*8(sp)
+
+    ld s0, 7*8(sp)
+    ld s1, 8*8(sp)
+
+    ld a0, 9*8(sp)
+    ld a1, 10*8(sp)
+    ld a2, 11*8(sp)
+    ld a3, 12*8(sp)
+    ld a4, 13*8(sp)
+    ld a5, 14*8(sp)
+    ld a6, 15*8(sp)
+    ld a7, 16*8(sp)
+
+    ld s2, 17*8(sp)
+    ld s3, 18*8(sp)
+    ld s4, 19*8(sp)
+    ld s5, 20*8(sp)
+    ld s6, 21*8(sp)
+    ld s7, 22*8(sp)
+    ld s8, 23*8(sp)
+    ld s9, 24*8(sp)
+    ld s10, 25*8(sp)
+    ld s11, 26*8(sp)
+
+    ld t3, 27*8(sp)
+    ld t4, 28*8(sp)
+    ld t5, 29*8(sp)
+    ld t6, 30*8(sp)
+
+    addi sp, sp, (34*8)
     sret
-
-.size trap_entry, .-trap_entry
