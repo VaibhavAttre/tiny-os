@@ -67,12 +67,14 @@ So I decided to take on the challenge of writing a small OS:
 
 ### Phase 4 — Processes & Context Switching
 
-- [ ] **Process Abstraction**
+- [x] **Process Abstraction**
   - Basic PCB / process struct
-- [ ] **Context Switching**
+- [x] **Context Switching**
   - Save/restore registers
   - Simple round-robin scheduler
-
+- [x] **Sleeping / Waking**
+  - Added a sleeping state for procs
+  - Added sleep/wakeup functions
 ---
 
 ### Phase 5 — User Mode & Address Spaces
