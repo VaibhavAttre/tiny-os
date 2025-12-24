@@ -56,6 +56,8 @@ void sched_init() {
         procs[i].ctx.s9 = 0;
         procs[i].ctx.s10 = 0;
         procs[i].ctx.s11 = 0;
+
+        procs[i].st = (struct sched_stats){0};
     }
 }
 
@@ -75,6 +77,7 @@ int sched_create_kthread(void (*func)(void)) {
             procs[i].kstack_top = (uint64_t)stack_base + KSTACK_SIZE;
             procs[i].start = func;
             procs[i].chan = 0;
+            procs[i].id = i;
             *(struct proc **) stack_base = &procs[i];
 
             procs[i].ctx.sp = procs[i].kstack_top;
@@ -93,9 +96,17 @@ void yield() {
         return;
     }
 
+    int was_on = (r_sstatus() & SSTATUS_SIE) != 0;
+    sstatus_disable_sie();
+
+    if(need_switch) curr->st.involuntary_yields++;
+    else curr->st.voluntary_yields++;
+
     need_switch = 0;
     curr->state = RUNNABLE;
     swtch(&curr->ctx, &scheduler_context);
+
+    if(was_on) sstatus_enable_sie();
 }
 
 void sleep(void * chan) {
@@ -106,11 +117,18 @@ void sleep(void * chan) {
 
     sstatus_disable_sie();
 
+    curr->st.sleep_calls++;
+    curr->st.sleep_start_tick = ticks;
+
     curr->chan = chan;
     curr->state = SLEEPING;
     need_switch = 0;
     swtch(&curr->ctx, &scheduler_context);
     curr->chan = 0;
+    if(curr->st.sleep_start_tick) {
+        curr->st.slept_ticks_total += (ticks - curr->st.sleep_start_tick);
+        curr->st.sleep_start_tick = 0;
+    }
     if(wasinterrupton) sstatus_enable_sie();
 }
 
@@ -124,6 +142,9 @@ void wakeup(void * chan) {
         if(procs[i].state == SLEEPING && procs[i].chan == chan) {
             procs[i].state = RUNNABLE;
             procs[i].chan = 0;
+
+            procs[i].st.wakeups++;
+            procs[i].st.last_wakeup_tick = ticks;
         }
     }
 
@@ -143,9 +164,18 @@ void scheduler() {
             ran = 1;
             curr = &procs[i];
             curr->state = RUNNING;
+            
+            curr->st.ctx_in++;
+            if(curr->st.last_wakeup_tick) {
+                curr->st.wake_latency_total += (ticks - curr->st.last_wakeup_tick);
+                curr->st.wake_latency_events++;
+                curr->st.last_wakeup_tick = 0;
+            }
+
             in_scheduler = 0;
-            //sstatus_enable_sie();
+            sstatus_enable_sie();
             swtch(&scheduler_context, &curr->ctx);
+            sstatus_disable_sie();
             in_scheduler = 1;
             //after it yeilds 
             curr = 0;
@@ -158,9 +188,63 @@ void scheduler() {
     }
 }
 
+void sched_on_tick() {
+
+    if(curr && curr->state == RUNNING) {
+        curr->st.run_ticks++;
+    }
+}
+
 void sched_tick() {
 
     if((ticks% QUANT_TICKS) != 0) return;
 
     need_switch = 1;
+}
+
+void sched_dump() {
+
+    kprintf("CSV\n");
+    kprintf("id,run_ticks,ctx_in,preemptions,voluntary_yields,sleep_calls,wakeups_received,slept_ticks_total,avg_wake_latency_ticks\n");
+    for (int i=0; i<NPROC; i++) {
+        if (procs[i].kstack_base == 0) continue; // allocated thread
+        uint64_t avg = 0;
+        if (procs[i].st.wake_latency_events)
+            avg = procs[i].st.wake_latency_total / procs[i].st.wake_latency_events;
+
+        kprintf("%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+            procs[i].id,
+            (int)procs[i].st.run_ticks,
+            (int)procs[i].st.ctx_in,
+            (int)procs[i].st.involuntary_yields,
+            (int)procs[i].st.voluntary_yields,
+            (int)procs[i].st.sleep_calls,
+            (int)procs[i].st.wakeups,
+            (int)procs[i].st.slept_ticks_total,
+            (int)avg
+        );
+    }
+    kprintf("CSV_END\n");
+}
+
+void sleep_ticks(uint64_t t) {
+
+    if(t == 0) return;
+    uint64_t target = ticks + t;
+    while((int64_t)(ticks - target) < 0) {
+        sleep((void*)&ticks);
+    }
+}
+
+void sleep_until(uint64_t t) {
+    while ((int64_t)(ticks - t) < 0) {
+        sleep((void*)&ticks);
+    }
+}
+
+void sleep_ms(uint64_t ms) {
+
+    uint64_t t = (ms * HZ+999)/1000;
+    if(t == 0) t = 1;
+    sleep_ticks(t);
 }

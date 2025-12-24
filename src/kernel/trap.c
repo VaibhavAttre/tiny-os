@@ -32,7 +32,7 @@ void trap_handler(struct trapframe * tpfrm) {
         clockinterrupt();
         //if ((ticks % 50) == 0) kprintf("tick=%d\n", ticks);
         
-        if(need_switch && !in_scheduler && myproc_fast()) yield();
+        if(need_switch && !in_scheduler && myproc()) yield();
         return;
     } 
     if(!interrupt && exception_code == 9) { // S mode ecall

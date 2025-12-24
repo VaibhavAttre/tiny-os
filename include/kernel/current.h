@@ -9,7 +9,7 @@ static inline uint64_t read_sp() {
     return x;
 }
 
-static inline struct proc * myproc_fast() {
+static inline struct proc * myproc() {
     
     uint64_t sp = read_sp();
     uint64_t base = sp & ~(KSTACK_SIZE- 1);

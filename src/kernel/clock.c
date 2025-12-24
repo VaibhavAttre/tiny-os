@@ -6,5 +6,7 @@
 void clockinterrupt() {
 
     ticks++;
+    wakeup((void*)&ticks);
+    sched_on_tick();
     sched_tick();
 }
