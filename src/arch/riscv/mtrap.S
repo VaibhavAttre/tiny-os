@@ -7,7 +7,7 @@
 #define MTIMECMP_OFF 0x4000
 #define MTIME_OFF 0xBFF8
 #define MIP_SSIP (1 << 1)
-#define INTERVAL 100000//10000000
+#define INTERVAL 1000000//10000000
 
 mtrap_entry:
     

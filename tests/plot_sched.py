@@ -146,11 +146,24 @@ axs[3].plot(m["tick"], 1.0/(1.0 + m["ctx_per_tick"]))
 axs[3].set_title("Overhead proxy 1/(1 + ctx/tick)")
 axs[3].set_xlabel("tick"); axs[3].set_ylabel("proxy")
 
-axs[4].plot(m["tick"], m["preempt_rate"], label="preempt/tick")
-axs[4].plot(m["tick"], m["vyield_rate"],  label="vyield/tick")
-axs[4].set_title("Preempt vs yield rates")
-axs[4].set_xlabel("tick"); axs[4].set_ylabel("rate")
-axs[4].legend(fontsize=8)
+ax = axs[4]
+ax2 = ax.twinx()
+
+ax.plot(m["tick"], m["vyield_rate"],
+        label="vyield/tick", color="tab:orange")
+
+ax2.plot(m["tick"], m["preempt_rate"],
+         label="preempt/tick", color="tab:blue")
+
+ax.set_title("Preempt vs yield rates (different scales)")
+ax.set_xlabel("tick")
+ax.set_ylabel("vyield/tick")
+ax2.set_ylabel("preempt/tick")
+
+# one combined legend
+lines, labels = ax.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax.legend(lines + lines2, labels + labels2, fontsize=8, loc="upper right")
 
 axs[5].stackplot(piv.index, piv.T.values, labels=[f"id {c}" for c in piv.columns])
 axs[5].set_title("CPU share per window (stacked)")

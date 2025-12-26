@@ -32,5 +32,5 @@ bits[53:10] = physical page nu mber
 #define SATP_SV39 (8UL << 60) //user sv39 translation
 #define MAKE_SATP(root_pa) (SATP_SV39 | (((uint64_t)(root_pa)) >> 12))
 
-static inline void w_satp(uint64_t x){ asm volatile("csrw satp, %0" :: "r"(x)); }
+//static inline void w_satp(uint64_t x){ asm volatile("csrw satp, %0" :: "r"(x)); }
 static inline void sfence_vma(void){ asm volatile("sfence.vma zero, zero"); }

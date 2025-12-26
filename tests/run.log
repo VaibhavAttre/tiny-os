@@ -1,0 +1,27 @@
+qemu-system-riscv64 \
+  -machine virt \
+  -smp 1 \
+  -bios none \
+  -kernel kernel.elf \
+  -nographic \
+
+va 0x0000000080000000: pte=0x000000002000004b pa=0x0000000080000000 flags=0x000000000000004b
+va 0x0000000080003000: pte=0x0000000020000c43 pa=0x0000000080003000 flags=0x0000000000000043
+va 0x0000000080004000: pte=0x00000000200010c7 pa=0x0000000080004000 flags=0x00000000000000c7
+va 0x0000000010000000: pte=0x00000000040000c7 pa=0x0000000010000000 flags=0x00000000000000c7
+va 0x0000000000000000: no pte
+tiny-os booted
+SNAPSHOT,tick=200
+CSV
+id,run_ticks,ctx_in,preemptions,voluntary_yields,sleep_calls,wakeups_received,slept_ticks_total,avg_wake_latency_ticks
+0,33,885,8,877,0,0,0,0
+1,67,885,15,870,0,0,0,0
+2,20,885,4,881,0,0,0,0
+3,18,885,4,881,0,0,0,0
+4,20,885,4,881,0,0,0,0
+5,18,885,4,881,0,0,0,0
+6,23,885,1,884,0,0,0,0
+7,0,200,0,0,199,199,199,0
+CSV_END
+QEMU: Terminated
+

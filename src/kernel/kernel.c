@@ -6,12 +6,30 @@
 #include "kernel/kalloc.h"
 #include "kernel/vm.h"
 #include "riscv.h"
-
+#include "kernel/syscall.h"
+#include "user_test.h"
 
 extern volatile uint64_t ticks;  
 #define RUN_FOR_TICKS 50000
 static volatile uint64_t sink = 0; 
 #define DUMP_EVERY 200
+
+extern unsigned char user_test_bin[];
+extern unsigned int user_test_bin_len;
+
+static inline void do_ecall_putc(char c) {
+    register uint64_t a0 asm("a0") = (uint64_t)c;
+    register uint64_t a7 asm("a7") = SYSCALL_PUTC;
+    asm volatile("ecall" : "+r"(a0) : "r"(a7) : "memory");
+}
+
+static void thread_ecall_test(void) {
+    for (;;) {
+        do_ecall_putc('S');
+        sleep_ticks(50);
+    }
+}
+
 
 void test_vm() {
     
@@ -98,7 +116,7 @@ static void thread_interactive0(void) {
     uint64_t s = 0x1A0D0ULL ^ rdcycle64();
     for (;;) {
         run_for_ticks(&s, rng_range(&s, 1, 8));
-        sleep_ticks(rng_range(&s, 5, 60));
+        //sleep_ticks(rng_range(&s, 5, 60));
     }
 }
 
@@ -106,7 +124,7 @@ static void thread_interactive1(void) {
     uint64_t s = 0x1A0D1ULL ^ (rdcycle64() + 123);
     for (;;) {
         run_for_ticks(&s, rng_range(&s, 1, 8));
-        sleep_ticks(rng_range(&s, 5, 60));
+        //sleep_ticks(rng_range(&s, 5, 60));
     }
 }
 
@@ -114,7 +132,7 @@ static void thread_interactive2(void) {
     uint64_t s = 0x1A0D2ULL ^ (rdcycle64() + 456);
     for (;;) {
         run_for_ticks(&s, rng_range(&s, 1, 8));
-        sleep_ticks(rng_range(&s, 5, 60));
+        //sleep_ticks(rng_range(&s, 5, 60));
     }
 }
 
@@ -122,7 +140,7 @@ static void thread_interactive3(void) {
     uint64_t s = 0x1A0D3ULL ^ (rdcycle64() + 789);
     for (;;) {
         run_for_ticks(&s, rng_range(&s, 1, 8));
-        sleep_ticks(rng_range(&s, 5, 60));
+        //sleep_ticks(rng_range(&s, 5, 60));
     }
 }
 
@@ -130,7 +148,7 @@ static void thread_io(void) {
     uint64_t s = 0x1010ULL ^ (rdcycle64() << 2);
     for (;;) {
         run_for_ticks(&s, rng_range(&s, 1, 2));
-        sleep_ticks(rng_range(&s, 20, 200));
+        //sleep_ticks(rng_range(&s, 20, 200));
     }
 }
 
@@ -157,44 +175,67 @@ static void thread_stats(void) {
     for (;;) asm volatile("wfi");
 }
 
-/*
-static void thread_cpu_burn0(void) {
-    for (;;) {
-        sink += 1;
-        sink ^= (sink << 7);
-        sink += (sink >> 3);
-    }
+static void stress_test_threads() {
+
+    if (sched_create_kthread(thread_batch0) < 0) { kprintf("failed batch0\n"); while(1){} }
+    if (sched_create_kthread(thread_batch1) < 0) { kprintf("failed batch1\n"); while(1){} }
+    
+    if (sched_create_kthread(thread_interactive0) < 0) { kprintf("failed int0\n"); while(1){} }
+    if (sched_create_kthread(thread_interactive1) < 0) { kprintf("failed int1\n"); while(1){} }
+    if (sched_create_kthread(thread_interactive2) < 0) { kprintf("failed int2\n"); while(1){} }
+    if (sched_create_kthread(thread_interactive3) < 0) { kprintf("failed int3\n"); while(1){} }
+    
+    if (sched_create_kthread(thread_io) < 0) { kprintf("failed ioish\n"); while(1){} }
+    //kprintf("Reached");
+    if (sched_create_kthread(thread_stats) < 0) { kprintf("failed stats\n"); while(1){} }
+    //kprintf("Reached");
+    
 }
 
-static void thread_cpu_burn1(void) {
+static void thread_trace_printer(void) {
     for (;;) {
-        sink += 0x9e3779b97f4a7c15ULL;
-        sink ^= (sink >> 11);
-        sink += (sink << 5);
-    }
-}
+        sleep_ticks(50);
 
-static void thread_yielder(void) {
-    uint64_t last = 0;
-    uint64_t seen = 0;
+        kprintf("\n--- TRACE @ tick=%d ---\n", (int)ticks);
+        uint32_t r, w;
+        sched_trace_state(&r, &w);
+        kprintf("TRACE state: r=%u w=%u\n", (unsigned)r, (unsigned)w);
 
-    for (;;) {
-        if (ticks != last) {
-            last = ticks;
-            seen++;
-            if ((seen % 7) == 0) {
-                yield();
-            }
+        int total = 0;
+        while (total < 200) {
+            int printed = sched_trace_dump_n(40);
+            if (printed == 0) break;
+            total += printed;
         }
     }
 }
 
-static void thread_periodic(void) {
+
+static void thread_kalloc_stress(void) {
+    uint64_t iter = 0;
     for (;;) {
-        sleep_ticks(50); 
+        void *p = kalloc();
+        if (p) {
+            ((volatile uint64_t*)p)[0] = ticks;
+            ((volatile uint64_t*)p)[1] = 0xdeadbeef;
+            kfree(p);
+        }
+
+        iter++;
+        if ((iter & 7) == 0) yield();  
+        else sleep_ticks(1);
     }
 }
-*/
+
+
+static void thread_kernel_yielder(void) {
+    for (;;) {
+        for (volatile int i=0; i<5000; i++) {}
+        yield();
+    }
+}
+
+
 
 void kmain(void) {
     uart_init();
@@ -213,18 +254,18 @@ void kmain(void) {
     //BOOTED CORRECLTY SO FAR
     kprintf("tiny-os booted\n");
 
-    if (sched_create_kthread(thread_batch0) < 0) { kprintf("failed batch0\n"); while(1){} }
-    if (sched_create_kthread(thread_batch1) < 0) { kprintf("failed batch1\n"); while(1){} }
+    //sched_create_kthread(thread_ecall_test);
     
-    if (sched_create_kthread(thread_interactive0) < 0) { kprintf("failed int0\n"); while(1){} }
-    if (sched_create_kthread(thread_interactive1) < 0) { kprintf("failed int1\n"); while(1){} }
-    if (sched_create_kthread(thread_interactive2) < 0) { kprintf("failed int2\n"); while(1){} }
-    if (sched_create_kthread(thread_interactive3) < 0) { kprintf("failed int3\n"); while(1){} }
-    
-    if (sched_create_kthread(thread_io) < 0) { kprintf("failed ioish\n"); while(1){} }
-    //kprintf("Reached");
-    if (sched_create_kthread(thread_stats) < 0) { kprintf("failed stats\n"); while(1){} }
-    //kprintf("Reached");
+    sched_create_kthread(thread_trace_printer);
+    sched_create_kthread(thread_kalloc_stress);
+    //sched_create_kthread(thread_kernel_yielder);
+
+    for(int i = 0; i < 6; ++i) {
+        if (sched_create_userproc(user_test_bin, (uint64_t)user_test_bin_len) < 0) {
+            kprintf("failed to create userproc %d\n", i);
+            while(1){}
+        }
+    }
 
     scheduler();
 

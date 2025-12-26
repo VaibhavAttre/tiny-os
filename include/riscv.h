@@ -57,7 +57,12 @@ do {                                             \
 #define MSTATUS_MPP_S    (1UL << 11)
 #define MSTATUS_MPP_U    (0UL << 11)
 
-
+static inline uint64_t r_tp(void) {
+    
+    uint64_t x;
+    asm volatile("mv %0, tp" : "=r"(x));
+    return x;
+}
 
 static inline uint64_t r_sstatus(void) { return read_csr(sstatus); }
 static inline void     w_sstatus(uint64_t x) { write_csr(sstatus, x); }

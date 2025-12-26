@@ -1,22 +1,18 @@
+// src/arch/riscv/kernelvec.S
 .section .text
-.globl trap_entry
+.globl kernelvec
 .align 2
 .option norvc
-
-#define SSTATUS_SPP  (1 << 8)
 
 #define TF_RA      0
 #define TF_SP      8
 #define TF_GP      16
 #define TF_TP      24
-
 #define TF_T0      32
 #define TF_T1      40
 #define TF_T2      48
-
 #define TF_S0      56
 #define TF_S1      64
-
 #define TF_A0      72
 #define TF_A1      80
 #define TF_A2      88
@@ -25,7 +21,6 @@
 #define TF_A5      112
 #define TF_A6      120
 #define TF_A7      128
-
 #define TF_S2      136
 #define TF_S3      144
 #define TF_S4      152
@@ -36,46 +31,17 @@
 #define TF_S9      192
 #define TF_S10     200
 #define TF_S11     208
-
 #define TF_T3      216
 #define TF_T4      224
 #define TF_T5      232
 #define TF_T6      240
-
 #define TF_SEPC    248
 #define TF_SSTATUS 256
-#define TF_PAD     264
+#define TF_SIZE    264   
 
-#define TF_SIZE    272
-
-trap_entry:
-    csrr    t0, sstatus
-    andi    t0, t0, SSTATUS_SPP
-    bnez    t0, 1f
-
-    # from user: swap to kernel trap stack in sscratch
-    csrrw   sp, sscratch, sp        
-1:
+kernelvec:
     addi sp, sp, -TF_SIZE
 
-    # Save interrupted SP into tf->sp
-    csrr    t0, sstatus
-    andi    t0, t0, SSTATUS_SPP
-    bnez    t0, 2f       
-    # from user: interrupted sp is currently in sscratch
-    csrr    t1, sscratch
-    sd      t1, TF_SP(sp)
-    # restore sscratch back to "trap stack top"
-    addi    t1, sp, TF_SIZE
-    csrw    sscratch, t1
-    j       3f
-2:
-    # old sp = (sp + TF_SIZE)
-    addi    t1, sp, TF_SIZE
-    sd      t1, TF_SP(sp)
-3:
-
-    # Save registers
     sd ra, TF_RA(sp)
     sd gp, TF_GP(sp)
     sd tp, TF_TP(sp)
@@ -112,25 +78,18 @@ trap_entry:
     sd t5, TF_T5(sp)
     sd t6, TF_T6(sp)
 
-    # Save CSRs
     csrr t0, sepc
     sd t0, TF_SEPC(sp)
     csrr t0, sstatus
     sd t0, TF_SSTATUS(sp)
 
-    sd zero, TF_PAD(sp)
+    call kerneltrap
 
-    # a0 = &trapframe
-    mv a0, sp
-    call trap_handler
-
-    # Restore CSRs
     ld t0, TF_SEPC(sp)
     csrw sepc, t0
     ld t0, TF_SSTATUS(sp)
     csrw sstatus, t0
 
-    # Restore registers
     ld ra, TF_RA(sp)
     ld gp, TF_GP(sp)
     ld tp, TF_TP(sp)
@@ -167,15 +126,5 @@ trap_entry:
     ld t5, TF_T5(sp)
     ld t6, TF_T6(sp)
 
-    csrr t0, sstatus
-    andi t0, t0, SSTATUS_SPP
-    bnez t0, ret_kernel
-
-    ld  t1, TF_SP(sp)
-    addi sp, sp, TF_SIZE
-    mv  sp, t1
-    sret
-
-ret_kernel:
     addi sp, sp, TF_SIZE
     sret

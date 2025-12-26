@@ -1,0 +1,78 @@
+#include "kernel/syscall.h"
+#include "kernel/trapframe.h"
+#include "kernel/printf.h"
+#include "kernel/sched.h"
+#include "timer.h"
+#include <drivers/uart.h>
+#include "riscv.h"
+#include "sv39.h"
+#include "kernel/current.h"
+#include <stdint.h>
+
+static void sys_sleep_ticks(uint64_t t) {
+
+    if(t == 0) return;
+
+    int x = (r_sstatus() & SSTATUS_SIE) != 0;
+    sstatus_enable_sie();
+    sleep_ticks(t);
+    if(!x) sstatus_disable_sie();
+}
+
+void syscall_handler(struct trapframe * tf) {
+
+    if (!tf) return;
+
+    uint64_t syscall_num = tf->a7;
+
+    if(syscall_num != SYSCALL_PUTC) {
+
+        //uint32_t x = ((uint32_t)syscall_num << 16) | (uint32_t)(tf->a0 & 0xFFFF);
+        //trace_log(TR_SYSCALL, myproc(), 0, x);
+        sched_trace_syscall(syscall_num, tf->a0);
+    }
+
+    //kprintf("syscall num=%d\n", (int)syscall_num);
+
+    switch(syscall_num) {
+
+        case SYSCALL_PUTC: {
+            uart_putc((char)(tf->a0 & 0xFF));
+            tf->a0 = 0;
+            break;
+        }
+
+        case SYSCALL_YIELD: {
+            yield_from_trap(0);
+            tf->a0 = 0;
+            break;
+        }
+
+        case SYSCALL_TICKS: {
+            tf->a0 = ticks;
+            break;
+        }
+
+        case SYSCALL_SLEEP: {
+            sys_sleep_ticks(tf->a0);
+            tf->a0 = 0;
+            break;
+        }
+
+        case SYSCALL_GETPID: {
+            struct proc * p = myproc();
+            if(!p) {
+                tf->a0 = -1;
+            } else {
+                tf->a0 = p->id;
+            }
+            break;
+        }
+
+        default: {
+            kprintf("Unknown syscall num: %d\n", (int)syscall_num);
+            tf->a0 = -1;
+            break;
+        }
+    }
+}

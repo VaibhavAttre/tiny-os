@@ -1,12 +1,13 @@
 #pragma once
 #include <stdint.h>
-
+#include "sv39.h"
+#include "kernel/trapframe.h"
 
 #define NPROC 512
 #define KSTACKS 1
 #define KSTACK_SIZE (4096 * KSTACKS)
-#define QUANT_TICKS 5
-#define HZ 100
+#define QUANT_TICKS 50
+#define HZ 50
 
 extern volatile int need_switch;
 extern volatile int in_scheduler;
@@ -56,24 +57,41 @@ struct proc {
     proc_state_t state;
     struct context ctx;
     void (*start)(void);
+
     void * kstack_base;
     uint64_t kstack_top;
     void * chan;
+
     struct sched_stats st;
+
+    pagetable_t pagetable;
+    int user;
+    uint64_t uentry;
+    uint64_t usp;
+
+    struct trapframe * tf;
 };
 
 void sched_init();
 int sched_create_kthread(void (*func)(void));
 void scheduler();
+struct proc * getmyproc();
 void yield();
+void yield_from_trap(int preempt);
 void sleep(void * chan);
 void wakeup(void * chan);
 void sched_tick();
 void sched_on_tick();
 void sched_dump();
+void sched_trace_dump();
+int sched_trace_dump_n(int max);
 void sleep_ticks(uint64_t t);
 void sleep_ms(uint64_t ms);
 void sleep_until(uint64_t t);
+void sched_trace_syscall(uint64_t num, uint64_t arg);
+void sched_trace_state(uint32_t *r, uint32_t *w);
+
+int sched_create_userproc(const void * code, uint64_t sz);
 
 //implementedin assmebly 
 void swtch(struct context * old, struct context * new);

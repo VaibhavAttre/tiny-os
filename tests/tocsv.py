@@ -7,11 +7,12 @@ in_csv = False
 header = None
 printed_header = False
 
+
 tick_re = re.compile(r'^(SNAPSHOT|FINAL),tick=(\d+)\s*$')
 
 for line in sys.stdin:
     line = line.strip()
-
+    
     m = tick_re.match(line)
     if m:
         tick = int(m.group(2))

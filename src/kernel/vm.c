@@ -3,16 +3,21 @@
 #include "sv39.h"
 #include "kernel/kalloc.h"
 #include "kernel/panic.h"
+#include "riscv.h"
 #include "kernel/printf.h"
+#include "kernel/memlayout.h"
+#include "kernel/string.h"
 
 static pagetable_t kpt;
 
+extern char trampoline[];
 extern char __text_start[], __text_end[];
 extern char __rodata_start[], __rodata_end[];
 extern char __data_start[], __data_end[];
 extern char __bss_start[], __bss_end[];
 extern char __stack_bottom[], __stack_top[];
 extern char _end[];
+
 
 //3 depth tree tyle page table walk
 static pte_t * walk(pagetable_t pt, uint64_t va, int alloc) {
@@ -26,6 +31,7 @@ static pte_t * walk(pagetable_t pt, uint64_t va, int alloc) {
             if(!alloc) return 0;
             void* p = kalloc();
             if(!p) return 0;
+            memzero(p, PGSIZE);
             *pte = PA2PTE((uint64_t)p) | PTE_V; //go into next level
             pt = (pagetable_t)p;
         }
@@ -34,8 +40,11 @@ static pte_t * walk(pagetable_t pt, uint64_t va, int alloc) {
     return &pt[PX(0, va)]; //final actual page
 }
 
+
 static int mappages(pagetable_t pt, uint64_t va, uint64_t pa, uint64_t sz, uint64_t bitfield) {
 
+    if(sz == 0) return 0;
+    
     uint64_t a = PGRDOWN(va);
     uint64_t b = PGRDOWN(va + sz - 1);
 
@@ -60,10 +69,19 @@ static void kmap_range(uint64_t a, uint64_t b, uint64_t perm) {
     if(mappages(kpt, a, a, b- a, perm) < 0) panic("kvminit");
 }
 
+static int map_range(pagetable_t pt, uint64_t a, uint64_t b, uint64_t perm) {
+
+    a = PGRDOWN(a);
+    b = PGRUP(b);
+    if (b <= a) return 0;
+    //dir map for now
+    return mappages(pt, a, a, b - a, perm);
+}
+
 /*
 DEBUG FUNC
 */
-static void dump_pte(pagetable_t pt, uint64_t va) {
+void dump_pte(pagetable_t pt, uint64_t va) {
     pte_t *pte = walk(pt, va, 0);
     if (!pte) { kprintf("va %p: no pte\n", (void*)va); return; }
     kprintf("va %p: pte=%p pa=%p flags=%p\n",
@@ -73,16 +91,22 @@ static void dump_pte(pagetable_t pt, uint64_t va) {
             (void*)(*pte & 0x3FF));
 }
 
+
 void kvminit(void) {
 
     kpt = (pagetable_t)kalloc();
     if(!kpt) panic("kvminit no mem err");
+    memzero(kpt, PGSIZE);
 
     kmap_range((uint64_t)__text_start, (uint64_t)__text_end, PTE_R|PTE_X|PTE_A);
     kmap_range((uint64_t)__rodata_start, (uint64_t)__rodata_end, PTE_R|PTE_A);
     kmap_range((uint64_t)__data_start, (uint64_t)__data_end, PTE_R|PTE_W|PTE_A|PTE_D);
     kmap_range((uint64_t)__bss_start, (uint64_t)__bss_end, PTE_R|PTE_W|PTE_A|PTE_D);
     kmap_range((uint64_t)__stack_bottom, (uint64_t)__stack_top, PTE_R|PTE_W|PTE_A|PTE_D);
+    
+    if(mappages(kpt, TRAMPOLINE, (uint64_t)trampoline, PGSIZE, PTE_R | PTE_X | PTE_A) < 0) {
+        panic("kvminit trampoline");
+    }
 
     //kprintf("reached A");
     //unused as RW (such as heap)
@@ -103,6 +127,7 @@ void kvminit(void) {
     dump_pte(kpt, 0x0);  
 }
 
+//installing kernel page table
 void kvmenable(void) {
 
     //kprintf("Reached C");
@@ -113,5 +138,94 @@ void kvmenable(void) {
     
     //kprintf("Reached E");
     sfence_vma();
+}
 
+//user vm page table switch func
+void vm_switch(pagetable_t pt) {
+
+    //kprintf("Reached C");
+    sfence_vma();
+    
+    //kprintf("Reached D");
+    w_satp(MAKE_SATP((uint64_t)pt));
+    
+    //kprintf("Reached E");
+    sfence_vma();
+}
+
+pagetable_t kvmpagetable(void) {
+    return kpt;
+}
+
+pagetable_t uvmcreate(void) {
+
+    pagetable_t pt = (pagetable_t)kalloc();
+    if(!pt) return 0;
+    memzero(pt, PGSIZE);
+    
+    uint64_t start = (uint64_t)__text_start;
+    uint64_t end = (uint64_t)__text_end;
+    if(map_range(pt, start, end, PTE_R | PTE_X | PTE_A) < 0) {
+        kfree((void*)pt);
+        return 0;
+    }
+        
+    start = (uint64_t)__rodata_start;
+    end = (uint64_t)__rodata_end;
+    if(map_range(pt, start, end, PTE_R | PTE_A) < 0) {
+        kfree((void*)pt);
+        return 0;
+    }   
+
+    //kprintf("REACHED UVMCREATE 2\n");
+
+    start = (uint64_t)__data_start;
+    end = (uint64_t)__data_end;
+    if(map_range(pt, start, end, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
+        kfree((void*)pt);
+        return 0;
+    } 
+    
+    //kprintf("REACHED UVMCREATE\n");
+    
+    start = (uint64_t)__bss_start;
+    end = (uint64_t)__bss_end;
+    if(map_range(pt, start, end, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
+        kfree((void*)pt);
+        return 0;
+    } 
+
+    start = (uint64_t)__stack_bottom;
+    end = (uint64_t)__stack_top;
+    if(map_range(pt, start, end, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
+        kfree((void*)pt);
+        return 0;
+    } 
+
+    if (mappages(pt, TRAMPOLINE, (uint64_t)trampoline, PGSIZE, PTE_R|PTE_X|PTE_A) < 0) {
+        kfree((void*)pt);
+        return 0;
+    }
+
+
+    /*
+    uint64_t heap_start = PGRUP((uint64_t)_end);
+    uint64_t heap_end = RAM_BASE + RAM_SIZE;
+    if(heap_start < heap_end) {
+        if(mappages(pt, heap_start, heap_start, heap_end - heap_start, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
+            kfree((void*)pt);
+            return 0;   
+        }
+    }*/
+
+    if(map_range(pt, 0x10000000UL, 0x10000000UL + PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
+        kfree((void*)pt);
+        return 0;   
+    }
+
+    return pt;
+}
+
+int vm_map(pagetable_t pt, uint64_t va, uint64_t pa, uint64_t size, int perm) {
+    return mappages(pt, va, pa, size, perm);
 }
