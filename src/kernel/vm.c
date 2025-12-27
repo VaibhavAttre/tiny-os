@@ -16,8 +16,26 @@ extern char __rodata_start[], __rodata_end[];
 extern char __data_start[], __data_end[];
 extern char __bss_start[], __bss_end[];
 extern char __stack_bottom[], __stack_top[];
+extern char trampoline[], trampoline_end[];
 extern char _end[];
 
+static void trampoline_validation() {
+
+    uint64_t t0 = (uint64_t)trampoline;
+    uint64_t t1 = (uint64_t)trampoline_end;
+
+    if (t1 - t0 > PGSIZE) {
+        panic("trampoline too big");
+    }
+
+    if (t0 % PGSIZE != 0) {
+        panic("trampoline not page aligned");
+    }
+
+    if (t1 < t0) {
+        panic("trampoline addresses invalid");
+    }
+}
 
 //3 depth tree tyle page table walk
 static pte_t * walk(pagetable_t pt, uint64_t va, int alloc) {
@@ -94,6 +112,8 @@ void dump_pte(pagetable_t pt, uint64_t va) {
 
 void kvminit(void) {
 
+    trampoline_validation();
+
     kpt = (pagetable_t)kalloc();
     if(!kpt) panic("kvminit no mem err");
     memzero(kpt, PGSIZE);
@@ -158,6 +178,8 @@ pagetable_t kvmpagetable(void) {
 }
 
 pagetable_t uvmcreate(void) {
+
+    trampoline_validation();
 
     pagetable_t pt = (pagetable_t)kalloc();
     if(!pt) return 0;

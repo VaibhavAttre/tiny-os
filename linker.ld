@@ -13,8 +13,11 @@ SECTIONS
         *(.text._start)
         *(.text*)
         . = ALIGN(4096);
+        *(.trampoline)
+        . = ALIGN(4096);
         __text_end = .;
     } > RAM
+
 
     .rodata : ALIGN(4096) {
         __rodata_start = .;

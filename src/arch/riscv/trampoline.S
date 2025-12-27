@@ -1,4 +1,4 @@
-.section .text
+.section .trampoline, "ax", @progbits
 .globl trampoline
 .globl uservec
 .globl userret
@@ -141,3 +141,6 @@ userret:
     ld a0, A0(a0)
 
     sret
+
+.globl trampoline_end
+trampoline_end:
