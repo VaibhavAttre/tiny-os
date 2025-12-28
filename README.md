@@ -21,7 +21,7 @@ So I decided to take on the challenge of writing a small OS:
 
 ### Software Stack
 
-- **Language:** C (with a bit of assembly for bootstrapping)
+- **Language:** C (with a bit of assembly for bootstrapping and python for data analysis)
 - **Architecture:** RISC-V 64-bit
 - **Platform:** Single-core virtual machine under QEMU
 - **Toolchain:** `riscv64-unknown-elf-gcc`, `riscv64-unknown-elf-ld`
