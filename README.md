@@ -1,6 +1,6 @@
 # tiny-os
 
-A tiny RISC-V operating system built from scratch to learn low-level systems, inspired by [RISC-V](https://riscv.org/) and [xv6](https://pdos.csail.mit.edu/6.828/2024/xv6.html).
+A tiny RISC-V operating system built from scratch to learn low-level systems, inspired by [RISC-V](https://riscv.org/), [xv6](https://pdos.csail.mit.edu/6.828/2024/xv6.html), and Linux
 
 ---
 
