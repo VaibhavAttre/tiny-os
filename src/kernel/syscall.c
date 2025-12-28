@@ -69,6 +69,11 @@ void syscall_handler(struct trapframe * tf) {
             break;
         }
 
+        case SYSCALL_EXIT: {
+            proc_exit((int)tf->a0);
+            break;
+        }
+
         default: {
             kprintf("Unknown syscall num: %d\n", (int)syscall_num);
             tf->a0 = -1;

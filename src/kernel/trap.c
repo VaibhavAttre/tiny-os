@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "riscv.h"
+#include "sv39.h"
 #include "kernel/trap.h"
 #include "kernel/printf.h"
 #include "kernel/current.h"
@@ -33,20 +34,21 @@ void usertrapret() {
     p->tf->kernel_trap = (uint64_t)usertrap;
     p->tf->kernel_hartid = r_tp();
 
-    write_csr(sscratch, TRAPFRAME);
+    w_sepc(p->tf->epc);
 
     uint64_t x = r_sstatus();
     x &= ~SSTATUS_SPP; //set to user mode
+    x &= ~SSTATUS_SIE;
     x |= SSTATUS_SPIE; //enable interrupts on return to user mode
     w_sstatus(x);
 
-    w_sepc(p->tf->epc);
+    write_csr(sscratch, TRAPFRAME);
 
     uint64_t satp = MAKE_SATP((uint64_t)p->pagetable);
-    void (*fn)(uint64_t) = (void (*)(uint64_t))trampoline_userret();
-    fn(satp);
+    uint64_t fn = trampoline_userret();
 
-    panic("usertrapret should not return\n");
+    ((void(*)(uint64_t))fn)(satp);
+    __builtin_unreachable();
 }
 
 void trap_init(void) {
@@ -80,6 +82,8 @@ void trap_handler(struct trapframe * tpfrm) {
     uint64_t sepc = tpfrm ? tpfrm->epc : read_csr(sepc);
     uint64_t stval = read_csr(stval);
 
+    int from_user = (tpfrm != 0);
+
     //TIMER INTERRUPT
     if (interrupt && exception_code == 1) {
         clear_csr_bits(sip, SIP_SSIP);
@@ -87,29 +91,48 @@ void trap_handler(struct trapframe * tpfrm) {
         clockinterrupt();
         //if ((ticks % 50) == 0) kprintf("tick=%d\n", ticks);
 
-        if(need_switch && !in_scheduler && myproc()) yield_from_trap(1);
+        if(from_user && need_switch && !in_scheduler && myproc()) yield_from_trap(1);
         return;
     } 
 
-    //SYSCALL
-    if(!interrupt && (exception_code == 9 || exception_code == 8)) {
+    //SYSCALL FROM USER MODE
+    if(from_user && !interrupt && exception_code == 8) {
 
         //kprintf("ecall sepc=%p\n", (void*)sepc);
         if (tpfrm) tpfrm->epc = sepc + 4;
         else write_csr(sepc, sepc + 4);
+        sstatus_enable_sie();
         syscall_handler(tpfrm);
+        struct proc *p = myproc();
+        if (p && p->killed) {
+            proc_exit(p->exit_status ? p->exit_status : -1);
+        }
         return;
     }
 
     //PAGE FAULT
     if(!interrupt && (exception_code == 12|| exception_code == 13 || exception_code == 15)) {
 
-        kprintf("Page fault code=%d sepc=%p stval=%p\n", (int)exception_code, (void*)sepc, (void*)stval);
-        while(1){}
+        if(from_user) {
+            struct proc * p = myproc();
+            proc_kill(p, -1);
+            kprintf("proc %d killed due to page fault\n", p->id);
+            kprintf("PF pid=%d code=%d sepc=%p stval=%p\n", p->id, (int)exception_code, (void*)sepc, (void*)stval);
+
+            return;
+        }
+    }
+
+    if(from_user) {
+
+        struct proc * p = myproc();
+        proc_kill(p, -1);
+        kprintf("proc %d killed due to page fault\n", p->id);
+        return;
     }
 
     kprintf("Unhandled exception");
-    while(1) {}
+    panic("unhandledc trap\n");
 }
 
 void kerneltrap() {
@@ -121,7 +144,9 @@ void usertrap() {
 
     w_stvec((uint64_t) kernelvec);
     struct proc * p = myproc();
-    write_csr(sscratch, p->kstack_top);
     trap_handler(p->tf);
+    if (p && p->killed) {
+        proc_exit(p->exit_status ? p->exit_status : -1);
+    }
     usertrapret();    
 }

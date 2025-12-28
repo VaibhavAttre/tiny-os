@@ -102,17 +102,96 @@ static void firstrun() {
     for(;;) {asm volatile("wfi");}
 }
 
+
+static void pt_freewalk(pagetable_t pt) {
+
+    for(int i = 0; i < 512; ++i) {
+
+        pte_t pte = pt[i];
+        if((pte & PTE_V) == 0) continue;
+        
+        if((pte & (PTE_R | PTE_W | PTE_X)) == 0) {
+            pagetable_t child = (pagetable_t)PTE2PA(pte);
+            pt_freewalk(child); 
+            kfree((void*)child);
+            pt[i] = 0;
+        }
+        else {
+            pt[i] = 0;
+        }
+    }
+}       
+
+static void freeproc(struct proc * proc) {
+
+    if(proc->ucode) {
+        kfree(proc->ucode);
+        proc->ucode = 0;
+    }
+    if(proc->ustack) {
+        kfree(proc->ustack);
+        proc->ustack = 0;
+    }
+    if(proc->pagetable) {
+        pt_freewalk(proc->pagetable);
+        kfree((void*)proc->pagetable);
+        proc->pagetable = 0;
+    }
+    if(proc->tf) {
+        kfree((void*)proc->tf);
+        proc->tf = 0;
+    }
+    if(proc->kstack_base) {
+        kfree(proc->kstack_base);
+        proc->kstack_base = 0;
+        proc->kstack_top = 0;
+    }    
+    // Reset (match struct proc exactly)
+    proc->state = UNUSED;
+    proc->killed = 0;
+    proc->exit_status = 0;
+
+    proc->start = 0;
+    proc->chan = 0;
+
+    proc->user = 0;
+    proc->uentry = 0;
+    proc->usp = 0;
+    memzero(&proc->ctx, sizeof(proc->ctx));
+    memzero(&proc->st, sizeof(proc->st));
+}
+
+void proc_kill(struct proc *p, int status) {
+    if (!p) return;
+    p->killed = 1;
+    p->exit_status = status;
+}
+
+void proc_exit(int status) {
+    struct proc *p = getmyproc();
+    if (!p) panic("proc_exit: no current proc\n");
+
+    sstatus_disable_sie();
+    in_scheduler = 1;
+
+    p->killed = 1;
+    p->exit_status = status;
+    p->state = ZOMBIE;
+    
+    swtch(&p->ctx, &scheduler_context);
+    panic("proc_exit: returned\n");
+}
+
 //bootstrap for first time proc is run
 static void kthread_trampoline() {
 
     void (*func)(void) = curr->start;
     sstatus_enable_sie();
     func();
+    
+    proc_exit(0);
 
-    kprintf("kthread trampoline\n");
-    curr->state = UNUSED;
-    yield();
-
+    panic("kthread_trampoline: returned from proc_exit\n");
     for(;;) {
         asm volatile("wfi");
     }
@@ -154,6 +233,11 @@ void sched_init() {
     for(int i = 0; i < NPROC; ++i) {
 
         procs[i].state = UNUSED;
+        procs[i].id = 0;
+        procs[i].killed = 0;
+        procs[i].exit_status = 0;
+        procs[i].ucode = 0;
+        procs[i].ustack = 0;
         procs[i].start = 0;
         procs[i].kstack_base = 0;
         procs[i].kstack_top = 0;
@@ -195,8 +279,7 @@ int sched_create_kthread(void (*func)(void)) {
             procs[i].chan = 0;
             procs[i].id = i;
             *(struct proc **) stack_base = &procs[i];
-            kprintf("[proc %d] kstack_base=%p kstack_top=%p\n",
-        i, procs[i].kstack_base, (void*)procs[i].kstack_top);
+            //kprintf("[proc %d] kstack_base=%p kstack_top=%p\n",i, procs[i].kstack_base, (void*)procs[i].kstack_top);
 
             procs[i].ctx.sp = procs[i].kstack_top;
             procs[i].ctx.ra = (uint64_t)kthread_trampoline;
@@ -213,7 +296,7 @@ static void do_yield(int restore_sie, int preempt) {
     sstatus_disable_sie();
 
     if (preempt) curr->st.involuntary_yields++;
-    else         curr->st.voluntary_yields++;
+    else curr->st.voluntary_yields++;
 
     need_switch = 0;
     curr->state = RUNNABLE;
@@ -317,6 +400,11 @@ void scheduler() {
             swtch(&scheduler_context, &curr->ctx);
             //sstatus_disable_sie();
             in_scheduler = 1;
+            
+            if(curr && curr->state == ZOMBIE) {
+                freeproc(curr);
+            }
+            
             //after it yeilds 
             curr = 0;
         }

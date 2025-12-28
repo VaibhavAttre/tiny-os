@@ -37,7 +37,7 @@
 #define TF_T6      240
 #define TF_SEPC    248
 #define TF_SSTATUS 256
-#define TF_SIZE    264   
+#define TF_SIZE    272   
 
 kernelvec:
     addi sp, sp, -TF_SIZE

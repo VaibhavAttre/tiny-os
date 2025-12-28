@@ -17,6 +17,7 @@ typedef enum {
     RUNNABLE = 1,
     RUNNING = 2,
     SLEEPING = 3,
+    ZOMBIE = 4,
 } proc_state_t;
 
 struct sched_stats {
@@ -70,6 +71,11 @@ struct proc {
     uint64_t usp;
 
     struct trapframe * tf;
+
+    int killed;
+    int exit_status;
+    void *ucode;
+    void *ustack;
 };
 
 void sched_init();
@@ -95,3 +101,6 @@ int sched_create_userproc(const void * code, uint64_t sz);
 
 //implementedin assmebly 
 void swtch(struct context * old, struct context * new);
+
+void proc_kill(struct proc *p, int status);
+void proc_exit(int status) __attribute__((noreturn));

@@ -256,17 +256,20 @@ void kmain(void) {
 
     //sched_create_kthread(thread_ecall_test);
     
-    sched_create_kthread(thread_trace_printer);
-    sched_create_kthread(thread_kalloc_stress);
+    //sched_create_kthread(thread_trace_printer);
+    //sched_create_kthread(thread_kalloc_stress);
     //sched_create_kthread(thread_kernel_yielder);
 
-    for(int i = 0; i < 6; ++i) {
+    /*for(int i = 0; i < 6; ++i) {
         if (sched_create_userproc(user_test_bin, (uint64_t)user_test_bin_len) < 0) {
             kprintf("failed to create userproc %d\n", i);
             while(1){}
         }
-    }
+    }*/
 
+    sched_create_userproc(user_test_bin, (uint64_t)user_test_bin_len);
+    sched_create_userproc(user_test_bin, user_test_bin_len);
+    //sched_create_userproc(user_test_bin, user_test_bin_len);
     scheduler();
 
     for (;;) {

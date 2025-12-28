@@ -1,25 +1,21 @@
 #pragma once
 #include <stdint.h>
-
 struct trapframe {
-  uint64_t kernel_satp;   // kernel page table
-  uint64_t kernel_sp;     // process kernel stack top
-  uint64_t kernel_trap;   // usertrap() function
-  uint64_t epc;           // saved user pc (sepc)
-  uint64_t kernel_hartid; // hart id (tp)
+  uint64_t kernel_satp;
+  uint64_t kernel_sp;
+  uint64_t kernel_trap;
+  uint64_t epc;
+  uint64_t kernel_hartid;
 
   uint64_t ra;
   uint64_t sp;
   uint64_t gp;
   uint64_t tp;
-
   uint64_t t0;
   uint64_t t1;
   uint64_t t2;
-
   uint64_t s0;
   uint64_t s1;
-
   uint64_t a0;
   uint64_t a1;
   uint64_t a2;
@@ -28,7 +24,6 @@ struct trapframe {
   uint64_t a5;
   uint64_t a6;
   uint64_t a7;
-
   uint64_t s2;
   uint64_t s3;
   uint64_t s4;
@@ -39,7 +34,6 @@ struct trapframe {
   uint64_t s9;
   uint64_t s10;
   uint64_t s11;
-
   uint64_t t3;
   uint64_t t4;
   uint64_t t5;
