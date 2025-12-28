@@ -79,12 +79,15 @@ So I decided to take on the challenge of writing a small OS:
 
 ### Phase 5 — User Mode & Address Spaces
 
-- [ ] **User Mode Support**
+- [x] **User Mode Support**
   - Entering user mode from the kernel
   - Returning to kernel on traps / syscalls
-- [ ] **Per-Process Address Spaces**
+- [x] **Per-Process Address Spaces**
   - Separate virtual address space per process
   - User/kernel memory protection
+- [x] **Updated Processes**
+  - Added trampoline + trapframe
+  - Support for zombies
 
 ---
 
