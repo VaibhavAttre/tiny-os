@@ -75,6 +75,10 @@ So I decided to take on the challenge of writing a small OS:
 - [x] **Sleeping / Waking**
   - Added a sleeping state for procs
   - Added sleep/wakeup functions
+- [x] **Stress Testing**
+  - Added stress tests and stats logging
+  - Python code to convert log to csv
+  - Added functionality for printing statistics over time
 ---
 
 ### Phase 5 — User Mode & Address Spaces
@@ -88,6 +92,7 @@ So I decided to take on the challenge of writing a small OS:
 - [x] **Updated Processes**
   - Added trampoline + trapframe
   - Support for zombies
+  - Ability to trace scheduler usage
 
 ---
 
