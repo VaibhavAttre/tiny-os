@@ -98,6 +98,7 @@ void sched_trace_syscall(uint64_t num, uint64_t arg);
 void sched_trace_state(uint32_t *r, uint32_t *w);
 
 int sched_create_userproc(const void * code, uint64_t sz);
+int proc_exec(struct proc * p, const uint8_t * code, uint64_t sz);
 
 //implementedin assmebly 
 void swtch(struct context * old, struct context * new);

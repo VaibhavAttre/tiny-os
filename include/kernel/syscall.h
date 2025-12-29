@@ -10,6 +10,7 @@ enum {
     SYSCALL_SLEEP = 4,
     SYSCALL_GETPID = 5,
     SYSCALL_EXIT = 6,
+    SYSCALL_EXEC = 7,
 };
 
 void syscall_handler(struct trapframe * tf);

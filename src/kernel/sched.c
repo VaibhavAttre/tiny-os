@@ -9,6 +9,7 @@
 #include "kernel/string.h"
 #include "kernel/vm.h"
 #include "kernel/memlayout.h"
+#include "kernel/elf.h"
 
 /*
 https://danielmangum.com/posts/risc-v-bytes-timer-interrupts/
@@ -16,7 +17,7 @@ https://book.rvemu.app/hardware-components/03-csrs.html
 */
 
 #define USER_TEXT_VA 0x0UL
-#define USER_STACK_TOP 0x0000000000004000UL
+#define USER_STACK_TOP TRAPFRAME
 #define USER_STACK_BASE (USER_STACK_TOP - PGSIZE)
 
 volatile int need_switch = 0;
@@ -102,6 +103,106 @@ static void firstrun() {
     for(;;) {asm volatile("wfi");}
 }
 
+static int premission_from_elf_flags(uint32_t flags) {
+
+    int perm = PTE_U | PTE_A;
+    if(flags & PF_R) perm |= PTE_R;
+    if(flags & PF_W) perm |= (PTE_W | PTE_D);
+    if(flags & PF_X) perm |= PTE_X;
+    return perm;
+}
+
+static int load(pagetable_t pt, uint8_t * img, uint64_t len, uint64_t * entry_out) {
+
+    if(len > PGSIZE) return -1;
+    void * page = kalloc();
+    if(!page) return -1;
+    memzero(page, PGSIZE);
+    memcopy(page, img, len);
+    if(vm_map(pt, 0, (uint64_t)page, PGSIZE, PTE_R | PTE_X | PTE_U | PTE_A) < 0) {
+        kfree(page);
+        return -1;
+    }
+    *entry_out = 0;
+    return 0;
+}
+
+static int load_elf(pagetable_t pt, uint8_t * img, uint64_t len, uint64_t * entry_out) {
+
+    Elf64_Ehdr eh;
+    if(len < sizeof(eh)) return -1;
+    memcopy(&eh, img, sizeof(eh));
+
+    if(eh.e_ident[EI_MAG0] != ELFMAG0 ||
+       eh.e_ident[EI_MAG1] != ELFMAG1 ||
+       eh.e_ident[EI_MAG2] != ELFMAG2 ||
+       eh.e_ident[EI_MAG3] != ELFMAG3) {
+        return -1;
+    }
+
+    if(eh.e_ident[EI_CLASS] != ELFCLASS64) return -1;
+    if(eh.e_ident[EI_DATA] != ELFDATA2LSB) return -1;
+    if(eh.e_machine != EM_RISCV) return -1;
+
+    if(eh.e_phoff == 0 || eh.e_phnum == 0) return -1;
+    if(eh.e_phentsize < sizeof(Elf64_Phdr)) return -1;
+    if (eh.e_phoff + (uint64_t)eh.e_phnum * (uint64_t)eh.e_phentsize > len) return -1;
+
+    for(uint16_t i = 0; i < eh.e_phnum; ++i) {
+
+        uint64_t off = eh.e_phoff + (uint64_t)i * (uint64_t)eh.e_phentsize;
+        Elf64_Phdr ph;
+        memcopy(&ph, img + off, sizeof(ph));
+
+        if(ph.p_type != PT_LOAD) continue;
+        if(ph.p_memsz == 0) continue;
+        if(ph.p_filesz > ph.p_memsz) return -1;
+        if(ph.p_offset + ph.p_filesz > len) return -1;
+
+        uint64_t seg_start = ph.p_vaddr;
+        uint64_t seg_end = ph.p_vaddr + ph.p_memsz;
+        if(seg_end < seg_start) return -1;
+        if(seg_end >= TRAPFRAME) return -1;
+
+        int perm = premission_from_elf_flags(ph.p_flags);
+        uint64_t a = PGRDOWN(seg_start);
+        uint64_t b = PGRUP(seg_end);
+
+        for(uint64_t va = a; va < b; va += PGSIZE) {
+
+            void * page = kalloc();
+            if(!page) return -1;
+            memzero(page, PGSIZE);
+
+            if(vm_map(pt, va, (uint64_t)page, PGSIZE, perm) < 0) {
+                kfree(page);
+                return -1;
+            }
+                
+            /*
+                file-backed:  [0x1050 -------------------- 0x2850)
+                page:                       [0x2000 ----------- 0x3000)
+                overlap:                     [0x2000 ---- 0x2850)
+
+            */
+
+            uint64_t file_lo = ph.p_vaddr;
+            uint64_t file_hi = ph.p_vaddr + ph.p_filesz;
+            uint64_t page_lo = va;
+            uint64_t page_hi = va + PGSIZE;
+            uint64_t copy_lo = (file_lo > page_lo) ? file_lo : page_lo;
+            uint64_t copy_hi = (file_hi < page_hi) ? file_hi : page_hi;
+            if(copy_hi > copy_lo) {
+                
+                uint64_t src_off = ph.p_offset + (copy_lo - file_lo);
+                uint64_t dst_off = copy_lo - page_lo;
+                memcopy((uint8_t*)page + dst_off, img + src_off, copy_hi - copy_lo);
+            }
+        }
+    }
+    *entry_out = eh.e_entry;
+    return 0;
+}
 
 static void pt_freewalk(pagetable_t pt) {
 
@@ -117,6 +218,11 @@ static void pt_freewalk(pagetable_t pt) {
             pt[i] = 0;
         }
         else {
+            
+            if(pte & PTE_U) {
+                void * page = (void*)PTE2PA(pte);
+                kfree(page);
+            }
             pt[i] = 0;
         }
     }
@@ -634,7 +740,7 @@ void sleep_ms(uint64_t ms) {
 
 int sched_create_userproc(const void * code, uint64_t sz) {
 
-    if(sz > PGSIZE) return -1;
+    const uint8_t * img = (const uint8_t *)code;
 
     for(int i = 0; i < NPROC; ++i) {
 
@@ -669,6 +775,7 @@ int sched_create_userproc(const void * code, uint64_t sz) {
                 kfree((void*)pt);
                 return -1;
             }
+            memzero(procs[i].tf, PGSIZE);
             
             if(vm_map(pt, TRAPFRAME, (uint64_t)procs[i].tf, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
                 kfree(stack_base);
@@ -676,58 +783,131 @@ int sched_create_userproc(const void * code, uint64_t sz) {
                 kfree((void*)procs[i].tf);
                 return -1;
             }
-
-            memzero(procs[i].tf, PGSIZE);
-            procs[i].tf->epc = USER_TEXT_VA;
-            procs[i].tf->sp = USER_STACK_TOP;
+            
 
            //kprintf("Checkpoint B\n");
 
-
-            void * ucode = kalloc();
             void * ustack = kalloc();
-            if(!ucode || !ustack) {
-                if(ucode) kfree(ucode);
+            if(!ustack) {
+                pt_freewalk(pt);
+                kfree((void*)pt);
+                kfree((void*)procs[i].tf);
                 if(ustack) kfree(ustack);
                 kfree(stack_base);
                 return -1;
             }
             
-            memzero(ucode, PGSIZE);
             memzero(ustack, PGSIZE);
-            memcopy(ucode, code, sz);
 
-           // kprintf("Checkpoint C\n");
-
-
-            if(vm_map(pt, USER_TEXT_VA, (uint64_t)ucode, PGSIZE, PTE_R | PTE_X | PTE_U |PTE_A) < 0 ||
-               vm_map(pt, USER_STACK_BASE, (uint64_t)ustack, PGSIZE, PTE_R | PTE_W | PTE_U | PTE_A | PTE_D) < 0) {
+            if(vm_map(pt, USER_STACK_BASE, (uint64_t)ustack, PGSIZE, PTE_R | PTE_W | PTE_U | PTE_A | PTE_D) < 0) {
                 
-                kfree(ucode);
                 kfree(ustack);
+                pt_freewalk(pt);
+                kfree((void*)procs[i].tf);
                 kfree(stack_base);
                 kfree((void*)pt);
+                procs[i].tf = 0;
                 return -1;
             }
 
-            dump_pte(pt, USER_TEXT_VA);
-            dump_pte(pt, USER_STACK_BASE);
+            uint64_t entry = 0;
+            int ok;
+            if(sz >= 4 && img[0] == 0x7F && img[1] == 'E' && img[2] == 'L' && img[3] == 'F') {
+                ok = load_elf(pt, (uint8_t*)img, sz, &entry);
+            }
+            else {
+                ok = load(pt, (uint8_t*)img, sz, &entry);
+            }
+            if(ok < 0) {
+                pt_freewalk(pt);
+                kfree(stack_base);
+                kfree((void*)pt);
+                kfree((void*)procs[i].tf);
+                return -1;
+            }   
             
-
+            procs[i].tf->epc = entry;
+            procs[i].tf->sp  = USER_STACK_TOP;
+            
             procs[i].pagetable = pt;
             procs[i].user = 1;
-            procs[i].uentry = USER_TEXT_VA;
+            procs[i].uentry = entry;
             procs[i].usp = USER_STACK_TOP;
-            procs[i].ctx.sp = procs[i].kstack_top;
-            procs[i].ctx.ra = (uint64_t)firstrun;//user_trampoline;
-            procs[i].state = RUNNABLE;
 
-            //kprintf("Checkpoint D\n");
+            procs[i].ctx.sp = procs[i].kstack_top;
+            procs[i].ctx.ra = (uint64_t)firstrun;   
+
+            procs[i].state = RUNNABLE;
+                
+
+           // kprintf("Checkpoint C\n");
+
+            dump_pte(pt, USER_TEXT_VA);
+            dump_pte(pt, USER_STACK_BASE);
+           
             return 0;
         }
     }   
     
     return -1;
+}
+
+int proc_exec(struct proc * p, const uint8_t * code, uint64_t sz) {
+    if (!p || !p->user) return -1;
+
+    pagetable_t newpt = uvmcreate();
+    if (!newpt) return -1;
+
+    if(vm_map(newpt, TRAPFRAME, (uint64_t)p->tf, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
+        kfree((void*)newpt);
+        return -1;
+    }
+
+    void * ustack = kalloc();
+    if(!ustack) {
+        pt_freewalk(newpt);
+        kfree((void*)newpt);
+        return -1;
+    }
+
+    memzero(ustack, PGSIZE);
+
+    if(vm_map(newpt, USER_STACK_BASE, (uint64_t)ustack, PGSIZE, PTE_R | PTE_W | PTE_U | PTE_A | PTE_D) < 0) {
+        //kfree(ustack);
+        pt_freewalk(newpt);
+        kfree((void*)newpt);
+        return -1;
+    }
+
+    uint64_t entry = 0;
+    int ok  = 0;
+    if(sz >= 4 && code[0] == 0x7F && code[1] == 'E' && code[2] == 'L' && code[3] == 'F') {
+        ok = load_elf(newpt, (uint8_t*)code, sz, &entry);
+    }
+    else {
+        ok = load(newpt, (uint8_t*)code, sz, &entry);
+    }
+
+    if(ok < 0) {
+        //kfree(ustack);
+        pt_freewalk(newpt);
+        kfree((void*)newpt);
+        return -1;
+    }
+
+    pagetable_t oldpt = p->pagetable;
+    p->pagetable = newpt;
+    sfence_vma();
+    p->uentry = entry;
+    p->usp = USER_STACK_TOP;
+    p->tf->epc = entry;
+    p->tf->sp  = USER_STACK_TOP;
+
+    if(oldpt) {
+        pt_freewalk(oldpt);
+        kfree((void*)oldpt);
+    }
+    return 0;
 }
 
 void sched_trace_syscall(uint64_t num, uint64_t arg) {

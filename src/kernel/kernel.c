@@ -14,9 +14,6 @@ extern volatile uint64_t ticks;
 static volatile uint64_t sink = 0; 
 #define DUMP_EVERY 200
 
-extern unsigned char user_test_bin[];
-extern unsigned int user_test_bin_len;
-
 static inline void do_ecall_putc(char c) {
     register uint64_t a0 asm("a0") = (uint64_t)c;
     register uint64_t a7 asm("a7") = SYSCALL_PUTC;
@@ -249,27 +246,15 @@ void kmain(void) {
     set_csr_bits(sie, SIE_SSIE);
     sstatus_enable_sie();
 
-    //test_vm();
-   
-    //BOOTED CORRECLTY SO FAR
     kprintf("tiny-os booted\n");
 
-    //sched_create_kthread(thread_ecall_test);
+    if (sched_create_userproc(userA_elf, (uint64_t)userA_elf_len) < 0) {
+        kprintf("failed to create init user proc\n");
+        for (;;) asm volatile("wfi");
+    }
+
+    kprintf("spawned init user proc A (ELF) len=%u\n", userA_elf_len);
     
-    //sched_create_kthread(thread_trace_printer);
-    //sched_create_kthread(thread_kalloc_stress);
-    //sched_create_kthread(thread_kernel_yielder);
-
-    /*for(int i = 0; i < 6; ++i) {
-        if (sched_create_userproc(user_test_bin, (uint64_t)user_test_bin_len) < 0) {
-            kprintf("failed to create userproc %d\n", i);
-            while(1){}
-        }
-    }*/
-
-    sched_create_userproc(user_test_bin, (uint64_t)user_test_bin_len);
-    sched_create_userproc(user_test_bin, user_test_bin_len);
-    //sched_create_userproc(user_test_bin, user_test_bin_len);
     scheduler();
 
     for (;;) {

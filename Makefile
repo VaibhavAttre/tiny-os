@@ -14,35 +14,53 @@ CFLAGS  := -g -Wall -Wextra -ffreestanding -nostdlib -nostartfiles \
 
 LDFLAGS := -T linker.ld -nostdlib
 
-# -----------------------------
-# User test: src/user/test.S -> build/user_test.bin -> include/user_test.h
-# -----------------------------
-USER_ASM := src/user/test.S
-USER_ELF := $(BUILD)/user_test.elf
-USER_BIN := $(BUILD)/user_test.bin
-USER_HDR := include/user_test.h
+USERA_ASM    := src/user/testA.S
+USERA_ELF    := $(BUILD)/userA.elf
+USERA_BLOB_C := $(BUILD)/userA_blob.c
+USERA_BLOB_O := $(BUILD)/userA_blob.o
 
-# Only ONE build rule
+USERB_ASM    := src/user/testB.S
+USERB_ELF    := $(BUILD)/userB.elf
+USERB_BLOB_C := $(BUILD)/userB_blob.c
+USERB_BLOB_O := $(BUILD)/userB_blob.o
+
 $(BUILD):
 	mkdir -p $(BUILD)
 
-$(USER_ELF): $(USER_ASM) | $(BUILD)
+$(USERA_ELF): $(USERA_ASM) | $(BUILD)
 	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
 	  -march=rv64imac -mabi=lp64 \
 	  -Wl,-Ttext=0 -Wl,-e,_start \
 	  -o $@ $<
 
-$(USER_BIN): $(USER_ELF)
-	$(RISCV_OBJCOPY) -O binary $< $@
+$(USERA_BLOB_C): $(USERA_ELF) | $(BUILD)
+	@xxd -i $< | sed -e 's/build_userA_elf/userA_elf/g' \
+	               -e 's/build_userA_elf_len/userA_elf_len/g' > $@
 
-# Your xxd does NOT support -n, so we rename via sed instead
-$(USER_HDR): $(USER_BIN)
-	@echo "Generating $@ from $<"
-	@{ \
-	  echo "#pragma once"; \
-	  xxd -i $< | sed -e 's/build_user_test_bin/user_test_bin/g' \
-	               -e 's/build_user_test_bin_len/user_test_bin_len/g'; \
-	} > $@
+$(USERA_BLOB_O): $(USERA_BLOB_C) | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+
+$(USERB_ELF): $(USERB_ASM) | $(BUILD)
+	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
+	  -march=rv64imac -mabi=lp64 \
+	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -o $@ $<
+
+$(USERB_BLOB_C): $(USERB_ELF) | $(BUILD)
+	@xxd -i $< | sed -e 's/build_userB_elf/userB_elf/g' \
+	               -e 's/build_userB_elf_len/userB_elf_len/g' > $@
+
+$(USERB_BLOB_O): $(USERB_BLOB_C) | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+
+$(USER_HDR): | $(BUILD)
+	@echo "Generating $@ (extern declarations)"
+	@echo "#pragma once" > $@
+	@echo "#include <stdint.h>" >> $@
+	@echo "extern const uint8_t user_test_elf[];" >> $@
+	@echo "extern const unsigned int user_test_elf_len;" >> $@
 
 # -----------------------------
 # Kernel build
@@ -64,9 +82,12 @@ OBJS := \
 	$(BUILD)/swtch.o \
 	$(BUILD)/syscall.o \
 	$(BUILD)/kernelvec.o \
-	$(BUILD)/trampoline.o
+	$(BUILD)/trampoline.o \
+	$(USERA_BLOB_O) \
+	$(USERB_BLOB_O) \
+	
+all: include/user_progs.h $(USERA_BLOB_O) $(USERB_BLOB_O) kernel.elf
 
-all: $(USER_HDR) kernel.elf
 
 $(BUILD)/boot.o: src/arch/riscv/boot.S | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
@@ -110,7 +131,7 @@ $(BUILD)/vm.o: src/kernel/vm.c | $(BUILD)
 $(BUILD)/swtch.o: src/arch/riscv/swtch.S | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD)/syscall.o: src/kernel/syscall.c | $(BUILD)
+$(BUILD)/syscall.o: src/kernel/syscall.c $(USER_HDR) | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD)/kernelvec.o: src/arch/riscv/kernelvec.S | $(BUILD)

@@ -8,6 +8,7 @@
 #include "sv39.h"
 #include "kernel/current.h"
 #include <stdint.h>
+#include "user_test.h"
 
 static void sys_sleep_ticks(uint64_t t) {
 
@@ -71,6 +72,23 @@ void syscall_handler(struct trapframe * tf) {
 
         case SYSCALL_EXIT: {
             proc_exit((int)tf->a0);
+            break;
+        }
+
+        case SYSCALL_EXEC: {
+            
+            struct proc *p = myproc();
+            int which = (int)tf->a0;
+
+            const uint8_t *img = 0;
+            uint64_t sz = 0;
+
+            if (which == 0) { img = (const uint8_t*)userA_elf; sz = userA_elf_len; }
+            else if (which == 1) { img = (const uint8_t*)userB_elf; sz = userB_elf_len; }
+            else { tf->a0 = (uint64_t)-1; break; }
+
+            int r = proc_exec(p, img, sz);
+            tf->a0 = (r < 0) ? (uint64_t)-1 : 0;
             break;
         }
 
