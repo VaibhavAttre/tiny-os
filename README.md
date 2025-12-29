@@ -105,11 +105,26 @@ So I decided to take on the challenge of writing a small OS:
 
 ---
 
-### Phase 7 — Signals
+### Phase 7 — Modern File System (CoW + B-trees + Checksums)
 
-- [ ] **Signals**
-  - Add linux inspired signals
-    
+- [ ] **Block Device + Cache**
+  - VirtIO block driver (QEMU `virt`)
+  - Buffer/block cache (`bread/bwrite/brelse`)
+- [ ] **CoW Metadata + Transactions**
+  - checksummed metadata blocks + multiple superblocks
+  - B-tree for metadata (dirs/inodes/extents)
+  - atomic commit + recovery (superblock written last)
+- [ ] **Space Management**
+  - extent allocator + deferred frees (free after commit)
+- [ ] **Files + Directories**
+  - path lookup, create, read/write, persistence across reboot
+- [ ] **FS Syscalls**
+  - `open`, `read`, `write`, `close`
+  - later: `mkdir`, `unlink`, `rename`, `fstat`
+- [ ] **Modern Features (later)**
+  - snapshots + reflinks
+  - data checksums + scrub
+
 ---
 
 ### Phase 8 — Init & Shell
