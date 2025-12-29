@@ -13,7 +13,6 @@ So I decided to take on the challenge of writing a small OS:
 
 - Runs on **RISC-V** (RV64)  
 - Booted and tested via **QEMU**  
-- Architecturally inspired by **xv6** but implemented from scratch
 
 ---
 
