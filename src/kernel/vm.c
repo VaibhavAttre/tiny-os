@@ -7,6 +7,7 @@
 #include "kernel/printf.h"
 #include "kernel/memlayout.h"
 #include "kernel/string.h"
+#include "kernel/vm.h"
 
 static pagetable_t kpt;
 
@@ -139,6 +140,12 @@ void kvminit(void) {
     //kprintf("reached B");
     //UART
     kmap_range(0x10000000UL, 0x10000000UL + PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
+    
+    // VirtIO MMIO (8 devices at 0x10001000 - 0x10008000)
+    for (uint64_t addr = 0x10001000UL; addr < 0x10009000UL; addr += PGSIZE) {
+        kmap_range(addr, addr + PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
+    }
+    
     //DEBUG
     dump_pte(kpt, (uint64_t)__text_start);
     dump_pte(kpt, (uint64_t)__rodata_start);
@@ -250,4 +257,92 @@ pagetable_t uvmcreate(void) {
 
 int vm_map(pagetable_t pt, uint64_t va, uint64_t pa, uint64_t size, int perm) {
     return mappages(pt, va, pa, size, perm);
+}
+
+// Walk page table and return the physical address for a user virtual address.
+// Returns 0 if not mapped or not accessible with required permissions.
+static uint64_t walkaddr(pagetable_t pt, uint64_t va, int check_user) {
+    if (va >= MAXVA) return 0;
+    
+    pte_t *pte = walk(pt, va, 0);
+    if (!pte) return 0;
+    if ((*pte & PTE_V) == 0) return 0;
+    if (check_user && (*pte & PTE_U) == 0) return 0;
+    
+    return PTE2PA(*pte);
+}
+
+// Copy from user virtual address to kernel buffer.
+// Returns 0 on success, -1 on error (bad address).
+int copyin(pagetable_t pt, char *dst, uint64_t srcva, uint64_t len) {
+    while (len > 0) {
+        uint64_t va0 = PGRDOWN(srcva);
+        uint64_t pa = walkaddr(pt, va0, 1);
+        if (pa == 0) return -1;
+        
+        uint64_t off = srcva - va0;
+        uint64_t n = PGSIZE - off;
+        if (n > len) n = len;
+        
+        memcopy(dst, (char*)(pa + off), n);
+        
+        len -= n;
+        dst += n;
+        srcva = va0 + PGSIZE;
+    }
+    return 0;
+}
+
+// Copy from kernel buffer to user virtual address.
+// Returns 0 on success, -1 on error (bad address).
+int copyout(pagetable_t pt, uint64_t dstva, char *src, uint64_t len) {
+    while (len > 0) {
+        uint64_t va0 = PGRDOWN(dstva);
+        uint64_t pa = walkaddr(pt, va0, 1);
+        if (pa == 0) return -1;
+        
+        uint64_t off = dstva - va0;
+        uint64_t n = PGSIZE - off;
+        if (n > len) n = len;
+        
+        memcopy((char*)(pa + off), src, n);
+        
+        len -= n;
+        src += n;
+        dstva = va0 + PGSIZE;
+    }
+    return 0;
+}
+
+// Copy a null-terminated string from user to kernel.
+// Returns 0 on success, -1 on error (bad address or string too long).
+int copyinstr(pagetable_t pt, char *dst, uint64_t srcva, uint64_t max) {
+    int got_null = 0;
+    
+    while (!got_null && max > 0) {
+        uint64_t va0 = PGRDOWN(srcva);
+        uint64_t pa = walkaddr(pt, va0, 1);
+        if (pa == 0) return -1;
+        
+        uint64_t off = srcva - va0;
+        uint64_t n = PGSIZE - off;
+        if (n > max) n = max;
+        
+        char *p = (char*)(pa + off);
+        for (uint64_t i = 0; i < n; i++) {
+            *dst = *p;
+            if (*p == '\0') {
+                got_null = 1;
+                break;
+            }
+            dst++;
+            p++;
+            max--;
+        }
+        
+        srcva = va0 + PGSIZE;
+    }
+    
+    if (!got_null) return -1;
+    return 0;
 }

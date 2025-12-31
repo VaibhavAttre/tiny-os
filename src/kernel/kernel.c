@@ -1,12 +1,18 @@
+// kernel.c
 #include <stdint.h>
 #include <drivers/uart.h>
+#include <drivers/virtio.h>
 #include <kernel/printf.h>
 #include <kernel/trap.h>
+#include <kernel/buf.h>
+#include <kernel/fs.h>
 #include "kernel/sched.h"
 #include "kernel/kalloc.h"
 #include "kernel/vm.h"
+#include "kernel/string.h"
 #include "riscv.h"
 #include "kernel/syscall.h"
+#include "kernel/file.h"
 #include "user_test.h"
 
 extern volatile uint64_t ticks;  
@@ -234,6 +240,87 @@ static void thread_kernel_yielder(void) {
 
 
 
+static void test_filesystem(void) {
+    kprintf("fs: testing filesystem...\n");
+    
+    // Test 1: Create a directory
+    kprintf("fs: TEST 1 - Creating /mydir...\n");
+    struct inode *dir = create("/mydir", T_DIR);
+    if (!dir) {
+        kprintf("fs: FAIL - couldn't create /mydir\n");
+    } else {
+        kprintf("fs: OK - created /mydir (inum=%d)\n", dir->inum);
+        iunlock(dir);
+        iput(dir);
+    }
+    
+    // Test 2: Create a file inside directory
+    kprintf("fs: TEST 2 - Creating /mydir/hello.txt...\n");
+    struct inode *file = create("/mydir/hello.txt", T_FILE);
+    if (!file) {
+        kprintf("fs: FAIL - couldn't create /mydir/hello.txt\n");
+    } else {
+        char msg[] = "Hello from subdirectory!";
+        writei(file, msg, 0, sizeof(msg));
+        kprintf("fs: OK - created /mydir/hello.txt with '%s'\n", msg);
+        iunlock(file);
+        iput(file);
+    }
+    
+    // Test 3: Path resolution with subdirectories
+    kprintf("fs: TEST 3 - Reading /mydir/hello.txt...\n");
+    struct inode *ip = namei("/mydir/hello.txt");
+    if (!ip) {
+        kprintf("fs: FAIL - namei couldn't find /mydir/hello.txt\n");
+    } else {
+        ilock(ip);
+        char buf[64];
+        memzero(buf, sizeof(buf));
+        readi(ip, buf, 0, sizeof(buf));
+        kprintf("fs: OK - read: '%s'\n", buf);
+        iunlock(ip);
+        iput(ip);
+    }
+    
+    // Test 4: Create nested directories
+    kprintf("fs: TEST 4 - Creating /mydir/subdir...\n");
+    struct inode *subdir = create("/mydir/subdir", T_DIR);
+    if (!subdir) {
+        kprintf("fs: FAIL - couldn't create /mydir/subdir\n");
+    } else {
+        kprintf("fs: OK - created /mydir/subdir (inum=%d)\n", subdir->inum);
+        iunlock(subdir);
+        iput(subdir);
+    }
+    
+    // Test 5: File in nested directory
+    kprintf("fs: TEST 5 - Creating /mydir/subdir/deep.txt...\n");
+    struct inode *deep = create("/mydir/subdir/deep.txt", T_FILE);
+    if (!deep) {
+        kprintf("fs: FAIL - couldn't create /mydir/subdir/deep.txt\n");
+    } else {
+        char msg[] = "Deep nested file!";
+        writei(deep, msg, 0, sizeof(msg));
+        kprintf("fs: OK - created deep.txt\n");
+        iunlock(deep);
+        iput(deep);
+    }
+    
+    // Verify we can read it back
+    ip = namei("/mydir/subdir/deep.txt");
+    if (ip) {
+        ilock(ip);
+        char buf[32];
+        memzero(buf, sizeof(buf));
+        readi(ip, buf, 0, sizeof(buf));
+        kprintf("fs: Verified: '%s'\n", buf);
+        iunlock(ip);
+        iput(ip);
+    }
+    
+    kprintf("fs: Filesystem tests complete!\n");
+}
+
 void kmain(void) {
     uart_init();
     trap_init();
@@ -241,12 +328,20 @@ void kmain(void) {
     kinit();
     kvminit();
     kvmenable();
+    fileinit();
+    devinit();
+    virtio_blk_init();
+    binit();
+    fsinit();
     sched_init();
 
     set_csr_bits(sie, SIE_SSIE);
     sstatus_enable_sie();
 
     kprintf("tiny-os booted\n");
+    
+    // Test filesystem
+    test_filesystem();
 
     if (sched_create_userproc(userA_elf, (uint64_t)userA_elf_len) < 0) {
         kprintf("failed to create init user proc\n");

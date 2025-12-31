@@ -83,6 +83,10 @@ OBJS := \
 	$(BUILD)/syscall.o \
 	$(BUILD)/kernelvec.o \
 	$(BUILD)/trampoline.o \
+	$(BUILD)/file.o \
+	$(BUILD)/virtio_blk.o \
+	$(BUILD)/buf.o \
+	$(BUILD)/fs.o \
 	$(USERA_BLOB_O) \
 	$(USERB_BLOB_O) \
 	
@@ -140,10 +144,46 @@ $(BUILD)/kernelvec.o: src/arch/riscv/kernelvec.S | $(BUILD)
 $(BUILD)/trampoline.o: src/arch/riscv/trampoline.S | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD)/file.o: src/kernel/file.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/virtio_blk.o: src/drivers/virtio_blk.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/buf.o: src/kernel/buf.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/fs.o: src/kernel/fs.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+# Host tools
+MKFS := tools/mkfs
+
+$(MKFS): tools/mkfs.c
+	$(CC) -Wall -o $@ $<
+
 kernel.elf: $(OBJS) linker.ld
 	$(RISCV_LD) $(LDFLAGS) -o $@ $(OBJS)
 
-run: kernel.elf
+DISK := disk.img
+DISK_SIZE := 16M
+DISK_BLOCKS := 16384
+
+$(DISK): $(MKFS)
+	qemu-img create -f raw $(DISK) $(DISK_SIZE)
+	./$(MKFS) $(DISK) $(DISK_BLOCKS)
+
+run: kernel.elf $(DISK)
+	qemu-system-riscv64 \
+	  -machine virt \
+	  -smp 1 \
+	  -bios none \
+	  -kernel kernel.elf \
+	  -drive file=$(DISK),if=none,format=raw,id=hd0 \
+	  -device virtio-blk-device,drive=hd0 \
+	  -nographic
+
+run-nodisk: kernel.elf
 	qemu-system-riscv64 \
 	  -machine virt \
 	  -smp 1 \
@@ -156,4 +196,7 @@ clean:
 	rm -f kernel.elf
 	rm -f $(USER_HDR)
 
-.PHONY: all run clean
+cleanall: clean
+	rm -f $(DISK)
+
+.PHONY: all run run-nodisk clean cleanall

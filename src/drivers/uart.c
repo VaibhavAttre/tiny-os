@@ -12,6 +12,7 @@
 #define UART_LSR 5
 
 #define UART_LSR_TX_EMPTY (1 << 5)
+#define UART_LSR_RX_READY (1 << 0)
 
 static void uart_write_reg(int reg, uint8_t val) {
     
@@ -42,3 +43,9 @@ void uart_puts(const char *s) {
     while (*s) uart_putc(*s++);
 }
 
+int uart_getc(void) {
+    if ((uart_read_reg(UART_LSR) & UART_LSR_RX_READY) == 0) {
+        return -1;  // No data available
+    }
+    return uart_read_reg(UART_RHR);
+}

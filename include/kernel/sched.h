@@ -2,6 +2,10 @@
 #include <stdint.h>
 #include "sv39.h"
 #include "kernel/trapframe.h"
+#include "kernel/file.h"
+
+// Forward declaration
+struct inode;
 
 #define NPROC 512
 #define KSTACKS 1
@@ -76,6 +80,16 @@ struct proc {
     int exit_status;
     void *ucode;
     void *ustack;
+    
+    // File descriptors
+    struct file *ofile[NOFILE];
+    
+    // Current working directory
+    struct inode *cwd;
+    
+    // Process hierarchy (for fork/wait)
+    struct proc *parent;
+    int pid;  // Unique PID (different from id which is slot index)
 };
 
 void sched_init();
@@ -105,3 +119,7 @@ void swtch(struct context * old, struct context * new);
 
 void proc_kill(struct proc *p, int status);
 void proc_exit(int status) __attribute__((noreturn));
+
+// Fork and wait
+int proc_fork(void);
+int proc_wait(int *status);
