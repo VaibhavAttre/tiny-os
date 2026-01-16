@@ -207,29 +207,54 @@ static int load_elf(pagetable_t pt, uint8_t * img, uint64_t len, uint64_t * entr
     return 0;
 }
 
-static void pt_freewalk(pagetable_t pt) {
+static void pt_freewalk_level(pagetable_t pt, int level, uint64_t va_base) {
 
     for(int i = 0; i < 512; ++i) {
+        uint64_t va = va_base + ((uint64_t)i << PXSHIFT(level));
+        if (va >= MAXVA) {
+            break;
+        }
 
         pte_t pte = pt[i];
         if((pte & PTE_V) == 0) continue;
-        
+
         if((pte & (PTE_R | PTE_W | PTE_X)) == 0) {
-            pagetable_t child = (pagetable_t)PTE2PA(pte);
-            pt_freewalk(child); 
+            if (pte & PTE_U) {
+                kprintf("pt_freewalk: bad non-leaf PTE va=%p pte=%p\n",
+                        (void*)va, (void*)pte);
+                pt[i] = 0;
+                continue;
+            }
+            uint64_t pa = PTE2PA(pte);
+            if ((pa % PGSIZE) != 0 || pa < RAM_BASE || pa >= RAM_END) {
+                kprintf("pt_freewalk: bad pt pa=%p pte=%p va=%p\n",
+                        (void*)pa, (void*)pte, (void*)va);
+                pt[i] = 0;
+                continue;
+            }
+            pagetable_t child = (pagetable_t)pa;
+            pt_freewalk_level(child, level - 1, va);
             kfree((void*)child);
             pt[i] = 0;
         }
         else {
-            
-            if(pte & PTE_U) {
-                void * page = (void*)PTE2PA(pte);
-                kfree(page);
+            if (pte & PTE_U) {
+                uint64_t pa = PTE2PA(pte);
+                if (pa >= RAM_BASE && pa < RAM_END) {
+                    kfree((void*)pa);
+                } else {
+                    kprintf("pt_freewalk: bad user PTE va=%p pa=%p pte=%p\n",
+                            (void*)va, (void*)pa, (void*)pte);
+                }
             }
             pt[i] = 0;
         }
     }
 }       
+
+static void pt_freewalk(pagetable_t pt) {
+    pt_freewalk_level(pt, 2, 0);
+}
 
 static void freeproc(struct proc * proc) {
 
@@ -702,6 +727,7 @@ void scheduler() {
         for(int i = 0; i < NPROC; ++i) {
 
             if (procs[i].state != RUNNABLE) continue;
+            kprintf("sched: run pid=%d user=%d\n", procs[i].id, procs[i].user);
             ran = 1;
             curr = &procs[i];
             curr->state = RUNNING;

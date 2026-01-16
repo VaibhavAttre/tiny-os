@@ -8,6 +8,7 @@
 .equ SYS_OPEN, 11
 .equ SYS_READ, 8
 .equ SYS_CLOSE, 10
+.equ SYS_TRUNCATE, 21
 
 .equ O_RDONLY, 0x000
 .equ O_WRONLY, 0x001
@@ -52,7 +53,13 @@ _start:
     mv a0, s0
     li a7, SYS_CLOSE
     ecall
-    
+
+    # Truncate the file to 0 bytes
+    la a0, filename
+    li a1, 0
+    li a7, SYS_TRUNCATE
+    ecall
+
     # Reopen file for reading
     la a0, filename
     li a1, O_RDONLY
@@ -83,11 +90,18 @@ _start:
     li a2, 6
     li a7, SYS_WRITE
     ecall
-    
+
     # Print the buffer content
     li a0, 1
     la a1, read_buf
     mv a2, s1           # bytes we read
+    li a7, SYS_WRITE
+    ecall
+
+    # Print truncate result
+    li a0, 1
+    la a1, msg_trunc
+    li a2, 17
     li a7, SYS_WRITE
     ecall
     
@@ -128,6 +142,8 @@ msg_opened:
     .ascii "File opened!\n"
 msg_read:
     .ascii "Read: "
+msg_trunc:
+    .ascii " (truncated)\n"
 msg_fail:
     .ascii "Open failed!\n"
 msg_done:

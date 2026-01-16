@@ -8,6 +8,8 @@ struct trapframe;
 #define O_WRONLY  0x001
 #define O_RDWR    0x002
 #define O_CREATE  0x200
+#define O_TRUNC   0x400
+#define O_TREE    0x800
 
 enum {
     SYSCALL_PUTC = 1,
@@ -30,6 +32,7 @@ enum {
     SYSCALL_UNLINK = 18,
     SYSCALL_FSTAT = 19,
     SYSCALL_DUP = 20,
+    SYSCALL_TRUNCATE = 21,
 };
 
 void syscall_handler(struct trapframe * tf);

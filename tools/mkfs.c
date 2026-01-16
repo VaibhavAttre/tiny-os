@@ -8,6 +8,7 @@
 
 #define BSIZE       1024
 #define FS_MAGIC    0x434F5746  // "COWF"
+#define NSUPER      2
 
 #define T_DIR       1
 #define T_FILE      2
@@ -27,6 +28,13 @@ struct superblock {
     uint32_t inode_start;
     uint32_t data_start;
     uint32_t root_ino;
+    uint32_t btree_root;
+    uint32_t extent_root;
+    uint32_t root_tree;
+    uint32_t fs_next_ino;
+    uint64_t generation;
+    uint32_t checksum;
+    uint32_t reserved;
 };
 
 struct dinode {
@@ -44,6 +52,7 @@ struct dirent {
 
 #define INODES_PER_BLOCK (BSIZE / sizeof(struct dinode))
 #define DIRENTS_PER_BLOCK (BSIZE / sizeof(struct dirent))
+#define REFCNTS_PER_BLOCK (BSIZE / sizeof(uint8_t))
 
 int fd;
 struct superblock sb;
@@ -87,15 +96,36 @@ void rinode(uint32_t inum, struct dinode *ip) {
     *ip = *dip;
 }
 
+static uint32_t sb_checksum(const struct superblock *sbp) {
+    struct superblock tmp = *sbp;
+    tmp.checksum = 0;
+    tmp.reserved = 0;
+
+    const uint8_t *p = (const uint8_t *)&tmp;
+    uint32_t hash = 2166136261u;  // FNV-1a
+    for (uint32_t i = 0; i < sizeof(tmp); i++) {
+        hash ^= p[i];
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
 uint32_t balloc(void) {
     uint32_t b = freeblock++;
     
     // Mark in bitmap
-    uint32_t bmap_block = 2 + b / (BSIZE * 8);
+    uint32_t bmap_block = 1 + NSUPER + b / (BSIZE * 8);
     rsect(bmap_block, block);
     uint32_t bi = b % (BSIZE * 8);
     block[bi / 8] |= (1 << (bi % 8));
     wsect(bmap_block, block);
+
+    // Set refcount to 1
+    uint32_t refcnt_block = 1 + NSUPER + sb.nbitmap +
+                            (b / REFCNTS_PER_BLOCK);
+    rsect(refcnt_block, block);
+    block[b % REFCNTS_PER_BLOCK] = 1;
+    wsect(refcnt_block, block);
     
     return b;
 }
@@ -157,7 +187,7 @@ int main(int argc, char *argv[]) {
     // Calculate layout
     // Refcount blocks: 1 byte per block, 1024 per block
     uint32_t nbitmap = (nblocks + BSIZE * 8 - 1) / (BSIZE * 8);
-    uint32_t nrefcnt = (nblocks + BSIZE - 1) / BSIZE;
+    uint32_t nrefcnt = (nblocks + REFCNTS_PER_BLOCK - 1) / REFCNTS_PER_BLOCK;
     uint32_t ninodes = nblocks / 10;  // ~10% of blocks for inodes
     uint32_t ninode_blocks = (ninodes * sizeof(struct dinode) + BSIZE - 1) / BSIZE;
     
@@ -167,9 +197,17 @@ int main(int argc, char *argv[]) {
     sb.ninodes = ninodes;
     sb.nbitmap = nbitmap;
     sb.nrefcnt = nrefcnt;
-    sb.inode_start = 2 + nbitmap + nrefcnt;
+    sb.inode_start = 1 + NSUPER + nbitmap + nrefcnt;
     sb.data_start = sb.inode_start + ninode_blocks;
     sb.root_ino = 1;
+    sb.btree_root = 0;
+    sb.extent_root = 0;
+    sb.root_tree = 0;
+    sb.fs_next_ino = 2;
+    sb.generation = 1;
+    sb.checksum = 0;
+    sb.reserved = 0;
+    sb.checksum = sb_checksum(&sb);
     
     freeblock = sb.data_start;
     
@@ -182,14 +220,16 @@ int main(int argc, char *argv[]) {
         wsect(i, block);
     }
     
-    // Write superblock
+    // Write superblocks
     memset(block, 0, BSIZE);
     memcpy(block, &sb, sizeof(sb));
-    wsect(1, block);
+    for (uint32_t i = 0; i < NSUPER; i++) {
+        wsect(1 + i, block);
+    }
     
     // Mark reserved blocks as used in bitmap
     for (uint32_t b = 0; b < sb.data_start; b++) {
-        uint32_t bmap_block = 2 + b / (BSIZE * 8);
+        uint32_t bmap_block = 1 + NSUPER + b / (BSIZE * 8);
         rsect(bmap_block, block);
         uint32_t bi = b % (BSIZE * 8);
         block[bi / 8] |= (1 << (bi % 8));
@@ -229,4 +269,3 @@ int main(int argc, char *argv[]) {
     close(fd);
     return 0;
 }
-

@@ -1,5 +1,6 @@
 #include "kernel/file.h"
 #include "kernel/fs.h"
+#include "kernel/fs_tree.h"
 #include "kernel/printf.h"
 #include <drivers/uart.h>
 
@@ -10,11 +11,21 @@ static struct file ftable[NFILE];
 #define NDEV 10
 static struct device devsw[NDEV];
 
+// Console device operations (defined below)
+static int consoleread(int minor, char *dst, int n);
+static int consolewrite(int minor, char *src, int n);
+
 void fileinit(void) {
     for (int i = 0; i < NFILE; i++) {
         ftable[i].type = FD_NONE;
         ftable[i].ref = 0;
     }
+}
+
+// Initialize devices
+void devinit(void) {
+    devsw[CONSOLE].read = consoleread;
+    devsw[CONSOLE].write = consolewrite;
 }
 
 // Allocate a file structure
@@ -29,6 +40,7 @@ struct file *filealloc(void) {
             ftable[i].minor = 0;
             ftable[i].ip = 0;
             ftable[i].off = 0;
+            ftable[i].tree_ino = 0;
             return &ftable[i];
         }
     }
@@ -94,6 +106,14 @@ int fileread(struct file *f, char *addr, int n) {
         iunlock(f->ip);
         return r;
     }
+
+    if (f->type == FD_TREE) {
+        int r = fs_tree_file_read(f->tree_ino, f->off, addr, (uint32_t)n);
+        if (r > 0) {
+            f->off += (uint32_t)r;
+        }
+        return r;
+    }
     
     return -1;
 }
@@ -121,6 +141,16 @@ int filewrite(struct file *f, char *addr, int n) {
             f->off += r;
         }
         iunlock(f->ip);
+        return r;
+    }
+
+    if (f->type == FD_TREE) {
+        kprintf("filewrite: FD_TREE ino=%u off=%u n=%d\n",
+                f->tree_ino, f->off, n);
+        int r = fs_tree_file_write(f->tree_ino, f->off, addr, (uint32_t)n);
+        if (r > 0) {
+            f->off += (uint32_t)r;
+        }
         return r;
     }
     
@@ -151,10 +181,3 @@ static int consolewrite(int minor, char *src, int n) {
     }
     return n;
 }
-
-// Initialize devices
-void devinit(void) {
-    devsw[CONSOLE].read = consoleread;
-    devsw[CONSOLE].write = consolewrite;
-}
-

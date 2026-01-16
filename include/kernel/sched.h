@@ -87,9 +87,8 @@ struct proc {
     // Current working directory
     struct inode *cwd;
     
-    // Process hierarchy (for fork/wait)
     struct proc *parent;
-    int pid;  // Unique PID (different from id which is slot index)
+    int pid;  
 };
 
 void sched_init();

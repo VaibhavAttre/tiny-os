@@ -1,10 +1,8 @@
 #pragma once
 #include <stdint.h>
 
-//
 // VirtIO MMIO interface for QEMU virt machine
 // Reference: https://docs.oasis-open.org/virtio/virtio/v1.1/virtio-v1.1.html
-//
 
 // QEMU virt machine has 8 VirtIO MMIO devices at these addresses
 #define VIRTIO0             0x10001000
@@ -22,6 +20,7 @@
 #define VIRTIO_MMIO_QUEUE_SEL           0x030  // Queue selector
 #define VIRTIO_MMIO_QUEUE_NUM_MAX       0x034  // Max queue size
 #define VIRTIO_MMIO_QUEUE_NUM           0x038  // Current queue size
+#define VIRTIO_MMIO_QUEUE_ALIGN         0x03c  // Queue alignment (legacy)
 #define VIRTIO_MMIO_GUEST_PAGE_SIZE     0x028  // Guest page size (legacy)
 #define VIRTIO_MMIO_QUEUE_PFN           0x040  // Queue PFN (legacy)
 #define VIRTIO_MMIO_QUEUE_READY         0x044  // Queue ready (modern)
@@ -153,4 +152,3 @@ struct virtio_blk {
 void virtio_blk_init(void);
 int disk_read(uint64_t sector, void *buf);
 int disk_write(uint64_t sector, void *buf);
-

@@ -4,6 +4,7 @@
 #include "kernel/sched.h"
 #include "kernel/file.h"
 #include "kernel/fs.h"
+#include "kernel/fs_tree.h"
 #include "kernel/vm.h"
 #include "kernel/string.h"
 #include "kernel/kalloc.h"
@@ -258,6 +259,50 @@ void syscall_handler(struct trapframe * tf) {
                 break;
             }
             
+            if (flags & O_TREE) {
+                fs_tree_init();
+                kprintf("sys_open: O_TREE path='%s' flags=%x\n", path, flags);
+                uint32_t tino = 0;
+                int r;
+                if (flags & O_CREATE) {
+                    r = fs_tree_create_file(path, &tino);
+                } else {
+                    r = fs_tree_lookup_path(path, &tino);
+                }
+                kprintf("sys_open: O_TREE r=%d ino=%u\n", r, tino);
+                if (r < 0) {
+                    tf->a0 = (uint64_t)-1;
+                    break;
+                }
+
+                struct file *f = filealloc();
+                if (f == 0) {
+                    kprintf("sys_open: O_TREE filealloc failed\n");
+                    tf->a0 = (uint64_t)-1;
+                    break;
+                }
+                kprintf("sys_open: O_TREE filealloc ok\n");
+
+                int fd = fdalloc(f);
+                if (fd < 0) {
+                    kprintf("sys_open: O_TREE fdalloc failed\n");
+                    fileclose(f);
+                    tf->a0 = (uint64_t)-1;
+                    break;
+                }
+                kprintf("sys_open: O_TREE fdalloc ok fd=%d\n", fd);
+
+                f->type = FD_TREE;
+                f->tree_ino = tino;
+                f->off = 0;
+                f->readable = !(flags & O_WRONLY);
+                f->writable = (flags & O_WRONLY) || (flags & O_RDWR);
+
+                tf->a0 = (uint64_t)fd;
+                kprintf("sys_open: O_TREE fd=%d\n", fd);
+                break;
+            }
+
             struct inode *ip;
             
             if (flags & O_CREATE) {
@@ -284,6 +329,11 @@ void syscall_handler(struct trapframe * tf) {
                     tf->a0 = (uint64_t)-1;
                     break;
                 }
+            }
+
+            if ((flags & O_TRUNC) && ip->type == T_FILE &&
+                (flags & (O_WRONLY | O_RDWR))) {
+                itrunc(ip);
             }
             
             // Allocate file structure
@@ -408,10 +458,21 @@ void syscall_handler(struct trapframe * tf) {
         case SYSCALL_MKDIR: {
             struct proc *p = myproc();
             uint64_t upath = tf->a0;
+            int flags = (int)tf->a1;
             
             char path[128];
             if (copyinstr(p->pagetable, path, upath, sizeof(path)) < 0) {
                 tf->a0 = (uint64_t)-1;
+                break;
+            }
+
+            if (flags == O_TREE) {
+                fs_tree_init();
+                if (fs_tree_create_dir(path) < 0) {
+                    tf->a0 = (uint64_t)-1;
+                    break;
+                }
+                tf->a0 = 0;
                 break;
             }
             
@@ -498,10 +559,21 @@ void syscall_handler(struct trapframe * tf) {
         case SYSCALL_UNLINK: {
             struct proc *p = myproc();
             uint64_t upath = tf->a0;
+            int flags = (int)tf->a1;
             
             char path[128];
             if (copyinstr(p->pagetable, path, upath, sizeof(path)) < 0) {
                 tf->a0 = (uint64_t)-1;
+                break;
+            }
+
+            if (flags == O_TREE) {
+                fs_tree_init();
+                if (fs_tree_unlink_path(path) < 0) {
+                    tf->a0 = (uint64_t)-1;
+                    break;
+                }
+                tf->a0 = 0;
                 break;
             }
             
@@ -558,7 +630,23 @@ void syscall_handler(struct trapframe * tf) {
             }
             
             // Decrement link count
-            ip->nlink--;
+            if (ip->type == T_DIR) {
+                // Parent loses its ".." link when removing a directory.
+                if (dp->nlink > 0) {
+                    dp->nlink--;
+                    iupdate(dp);
+                }
+                ip->nlink = 0;
+            } else {
+                if (ip->nlink > 0) {
+                    ip->nlink--;
+                }
+            }
+
+            if (ip->nlink == 0) {
+                itrunc(ip);
+                ip->type = T_UNUSED;
+            }
             iupdate(ip);
             
             iunlock(ip);
@@ -566,6 +654,57 @@ void syscall_handler(struct trapframe * tf) {
             iunlock(dp);
             iput(dp);
             
+            tf->a0 = 0;
+            break;
+        }
+
+        case SYSCALL_TRUNCATE: {
+            struct proc *p = myproc();
+            uint64_t upath = tf->a0;
+            uint64_t usize = tf->a1;
+
+            if (usize > 0xFFFFFFFFu) {
+                tf->a0 = (uint64_t)-1;
+                break;
+            }
+
+            char path[128];
+            if (copyinstr(p->pagetable, path, upath, sizeof(path)) < 0) {
+                tf->a0 = (uint64_t)-1;
+                break;
+            }
+
+            struct inode *ip = namei(path);
+            if (ip == 0) {
+                tf->a0 = (uint64_t)-1;
+                break;
+            }
+
+            ilock(ip);
+            if (ip->type != T_FILE) {
+                iunlock(ip);
+                iput(ip);
+                tf->a0 = (uint64_t)-1;
+                break;
+            }
+
+            uint32_t newsize = (uint32_t)usize;
+            if (newsize > ip->size) {
+                iunlock(ip);
+                iput(ip);
+                tf->a0 = (uint64_t)-1;
+                break;
+            }
+
+            if (newsize == 0) {
+                itrunc(ip);
+            } else {
+                itrunc_to(ip, newsize);
+            }
+
+            iunlock(ip);
+            iput(ip);
+
             tf->a0 = 0;
             break;
         }
@@ -597,6 +736,17 @@ void syscall_handler(struct trapframe * tf) {
                 st.size = f->ip->size;
                 st.ino = f->ip->inum;
                 iunlock(f->ip);
+            } else if (f->type == FD_TREE) {
+                uint16_t type = 0;
+                uint64_t size = 0;
+                if (fs_tree_get_inode(f->tree_ino, &type, &size) < 0) {
+                    tf->a0 = (uint64_t)-1;
+                    break;
+                }
+                st.type = type;
+                st.nlink = 1;
+                st.size = (uint32_t)size;
+                st.ino = f->tree_ino;
             } else if (f->type == FD_DEVICE) {
                 st.type = 0;  // Special device
                 st.nlink = 1;

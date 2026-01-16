@@ -9,6 +9,7 @@ enum {
     FD_NONE = 0,
     FD_DEVICE,      // console, etc.
     FD_INODE,       // future: disk file
+    FD_TREE,        // FS-tree backed file
     FD_PIPE,        // future: pipe
 };
 
@@ -18,7 +19,6 @@ struct device {
     int (*write)(int minor, char *src, int n);
 };
 
-// Forward declaration
 struct inode;
 
 // Open file structure
@@ -35,6 +35,9 @@ struct file {
     // For FD_INODE
     struct inode *ip;
     uint32_t off;       // file offset
+
+    // For FD_TREE
+    uint32_t tree_ino;
 };
 
 // File table operations
@@ -49,8 +52,7 @@ int filewrite(struct file *f, char *addr, int n);
 void devinit(void);
 #define CONSOLE 1
 
-// Per-process FD helpers (implemented in sched.c since it knows about proc)
+// Per-process FD helpers
 struct proc;
 int fdalloc(struct file *f);  // Allocate FD in current process
 void proc_fdinit(struct proc *p);  // Initialize FDs for new process (console on 0/1/2)
-

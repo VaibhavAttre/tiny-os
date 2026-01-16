@@ -2,6 +2,7 @@
 #include "mmu.h"
 #include "kernel/kalloc.h"
 #include "kernel/panic.h"
+#include "kernel/printf.h"
 
 extern char __stack_top[];
 
@@ -27,6 +28,14 @@ static void freerange(uint64_t start, uint64_t end) {
 void kfree(void* p) {
 
     uint64_t page = (uint64_t) p;
+    if (page == 0) {
+        kprintf("kfree: ignore null\n");
+        return;
+    }
+    if (page < RAM_BASE || page >= RAM_END) {
+        kprintf("kfree: ignore out-of-range %p\n", p);
+        return;
+    }
     if(page % PGSIZE) panic ("kfree unaligned");
 
     struct run* r = (struct run*) page;

@@ -1,7 +1,3 @@
-//
-// VirtIO Block Device Driver for QEMU virt machine
-//
-
 #include <drivers/virtio.h>
 #include <drivers/uart.h>
 #include "kernel/printf.h"
@@ -174,30 +170,33 @@ void virtio_blk_init(void) {
     //   avail at: desc + 16 * queue_size
     //   used at: align(avail_end, page_size) = next page boundary!
     // So we need 2 pages: page 1 for desc+avail, page 2 for used
-    void *page1 = kalloc();
-    void *page2 = kalloc();
-    if (!page1 || !page2) {
-        kprintf("virtio: no memory for queue\n");
-        return;
-    }
-    memzero(page1, PGSIZE);
-    memzero(page2, PGSIZE);
-    
-    // We must give page2 immediately after page1 to the device
-    // But kalloc may not give contiguous pages. Check:
-    if ((uint64_t)page2 != (uint64_t)page1 + PGSIZE) {
-        // Pages not contiguous - swap if page2 < page1, or give up
-        if ((uint64_t)page2 < (uint64_t)page1) {
+    void *page1 = 0;
+    void *page2 = 0;
+    for (int tries = 0; tries < 128; tries++) {
+        page1 = kalloc();
+        page2 = kalloc();
+        if (!page1 || !page2) {
+            kprintf("virtio: no memory for queue\n");
+            return;
+        }
+        if ((uint64_t)page2 + PGSIZE == (uint64_t)page1) {
             void *tmp = page1;
             page1 = page2;
             page2 = tmp;
         }
-        if ((uint64_t)page2 != (uint64_t)page1 + PGSIZE) {
-            kprintf("virtio: pages not contiguous, trying anyway\n");
-            // For legacy, we need to register just the first page
-            // and hope the device uses our calculated addresses
+        if ((uint64_t)page2 == (uint64_t)page1 + PGSIZE) {
+            break;
         }
+        kfree(page1);
+        kfree(page2);
+        page1 = 0;
+        page2 = 0;
     }
+    if (!page1 || !page2 || (uint64_t)page2 != (uint64_t)page1 + PGSIZE) {
+        panic("virtio: cannot allocate contiguous queue pages");
+    }
+    memzero(page1, PGSIZE);
+    memzero(page2, PGSIZE);
     
     disk.desc = (struct virtq_desc *)page1;
     disk.avail = (struct virtq_avail *)((char*)page1 + VIRTIO_RING_SIZE * 16);
@@ -205,6 +204,7 @@ void virtio_blk_init(void) {
     
     if (version == 1) {
         // Legacy: tell device the page frame number
+        virtio_write(VIRTIO_MMIO_QUEUE_ALIGN, PGSIZE);
         uint64_t pfn = (uint64_t)page1 / PGSIZE;
         virtio_write(VIRTIO_MMIO_QUEUE_PFN, (uint32_t)pfn);
     } else {
@@ -336,4 +336,3 @@ int disk_read(uint64_t sector, void *buf) {
 int disk_write(uint64_t sector, void *buf) {
     return disk_rw(sector, buf, 1);
 }
-

@@ -11,11 +11,59 @@
 // Cached superblock
 struct superblock sb;
 
+static uint32_t sb_checksum(const struct superblock *sbp) {
+    struct superblock tmp = *sbp;
+    tmp.checksum = 0;
+    tmp.reserved = 0;
+
+    const uint8_t *p = (const uint8_t *)&tmp;
+    uint32_t hash = 2166136261u;  // FNV-1a
+    for (uint32_t i = 0; i < sizeof(tmp); i++) {
+        hash ^= p[i];
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
 // Read superblock from disk
 void readsb(void) {
-    struct buf *bp = bread(1);  // Superblock is at block 1
-    memmove(&sb, bp->data, sizeof(sb));
-    brelse(bp);
+    struct superblock best;
+    memzero(&best, sizeof(best));
+    uint64_t best_gen = 0;
+
+    for (uint32_t i = 0; i < NSUPER; i++) {
+        struct buf *bp = bread(1 + i);
+        struct superblock cand;
+        memmove(&cand, bp->data, sizeof(cand));
+        brelse(bp);
+
+        if (cand.magic != FS_MAGIC) {
+            continue;
+        }
+        if (sb_checksum(&cand) != cand.checksum) {
+            continue;
+        }
+        if (cand.generation >= best_gen) {
+            best = cand;
+            best_gen = cand.generation;
+        }
+    }
+
+    memmove(&sb, &best, sizeof(sb));
+}
+
+// Write superblock to disk (all copies).
+void writesb(void) {
+    sb.generation++;
+    sb.checksum = sb_checksum(&sb);
+
+    for (uint32_t i = 0; i < NSUPER; i++) {
+        struct buf *bp = bread(1 + i);
+        memzero(bp->data, BSIZE);
+        memmove(bp->data, &sb, sizeof(sb));
+        bwrite(bp);
+        brelse(bp);
+    }
 }
 
 // Initialize filesystem
@@ -42,7 +90,8 @@ uint8_t brefcnt_get(uint32_t blockno) {
         return 0;
     }
     
-    uint32_t refcnt_block = 2 + sb.nbitmap + (blockno / REFCNTS_PER_BLOCK);
+    uint32_t refcnt_block = 1 + NSUPER + sb.nbitmap +
+                            (blockno / REFCNTS_PER_BLOCK);
     struct buf *bp = bread(refcnt_block);
     uint8_t refcnt = bp->data[blockno % REFCNTS_PER_BLOCK];
     brelse(bp);
@@ -55,7 +104,8 @@ void brefcnt_inc(uint32_t blockno) {
         return;
     }
     
-    uint32_t refcnt_block = 2 + sb.nbitmap + (blockno / REFCNTS_PER_BLOCK);
+    uint32_t refcnt_block = 1 + NSUPER + sb.nbitmap +
+                            (blockno / REFCNTS_PER_BLOCK);
     struct buf *bp = bread(refcnt_block);
     uint32_t idx = blockno % REFCNTS_PER_BLOCK;
     
@@ -72,7 +122,8 @@ void brefcnt_dec(uint32_t blockno) {
         return;
     }
     
-    uint32_t refcnt_block = 2 + sb.nbitmap + (blockno / REFCNTS_PER_BLOCK);
+    uint32_t refcnt_block = 1 + NSUPER + sb.nbitmap +
+                            (blockno / REFCNTS_PER_BLOCK);
     struct buf *bp = bread(refcnt_block);
     uint32_t idx = blockno % REFCNTS_PER_BLOCK;
     
@@ -83,7 +134,7 @@ void brefcnt_dec(uint32_t blockno) {
         if (bp->data[idx] == 0) {
             brelse(bp);
             // Actually free the block in bitmap
-            uint32_t bmap_block = 2 + blockno / (BSIZE * 8);
+            uint32_t bmap_block = 1 + NSUPER + blockno / (BSIZE * 8);
             bp = bread(bmap_block);
             uint32_t bi = blockno % (BSIZE * 8);
             bp->data[bi / 8] &= ~(1 << (bi % 8));
@@ -104,7 +155,7 @@ uint32_t balloc(void) {
     
     // Scan through bitmap blocks
     for (uint32_t b = 0; b < sb.nblocks; b += BSIZE * 8) {
-        uint32_t bmap_block = 2 + b / (BSIZE * 8);
+        uint32_t bmap_block = 1 + NSUPER + b / (BSIZE * 8);
         bp = bread(bmap_block);
         
         // Check each bit in this bitmap block
@@ -120,7 +171,8 @@ uint32_t balloc(void) {
                 uint32_t blockno = b + bi;
                 
                 // Set refcount to 1
-                uint32_t refcnt_block = 2 + sb.nbitmap + (blockno / REFCNTS_PER_BLOCK);
+                uint32_t refcnt_block = 1 + NSUPER + sb.nbitmap +
+                                        (blockno / REFCNTS_PER_BLOCK);
                 bp = bread(refcnt_block);
                 bp->data[blockno % REFCNTS_PER_BLOCK] = 1;
                 bwrite(bp);
@@ -257,6 +309,102 @@ void iupdate(struct inode *ip) {
     
     bwrite(bp);
     brelse(bp);
+}
+
+// Truncate inode: drop all data blocks and reset size.
+void itrunc(struct inode *ip) {
+    if (ip == 0 || ip->refcnt < 1) {
+        panic("itrunc");
+    }
+
+    // Free direct blocks.
+    for (int i = 0; i < NDIRECT; i++) {
+        if (ip->addrs[i]) {
+            bfree(ip->addrs[i]);
+            ip->addrs[i] = 0;
+        }
+    }
+
+    // Free indirect blocks.
+    if (ip->addrs[NDIRECT]) {
+        struct buf *bp = bread(ip->addrs[NDIRECT]);
+        uint32_t *a = (uint32_t *)bp->data;
+        for (int i = 0; i < NINDIRECT; i++) {
+            if (a[i]) {
+                bfree(a[i]);
+                a[i] = 0;
+            }
+        }
+        brelse(bp);
+        bfree(ip->addrs[NDIRECT]);
+        ip->addrs[NDIRECT] = 0;
+    }
+
+    ip->size = 0;
+    iupdate(ip);
+}
+
+// Truncate inode to a specific size (shrink only).
+void itrunc_to(struct inode *ip, uint32_t newsize) {
+    if (ip == 0 || ip->refcnt < 1) {
+        panic("itrunc_to");
+    }
+    if (newsize >= ip->size) {
+        return;
+    }
+
+    uint32_t old_nblocks = (ip->size + BSIZE - 1) / BSIZE;
+    uint32_t new_nblocks = (newsize + BSIZE - 1) / BSIZE;
+
+    // Free direct blocks beyond new size.
+    for (uint32_t i = new_nblocks; i < old_nblocks && i < NDIRECT; i++) {
+        if (ip->addrs[i]) {
+            bfree(ip->addrs[i]);
+            ip->addrs[i] = 0;
+        }
+    }
+
+    // Free indirect blocks beyond new size.
+    if (old_nblocks > NDIRECT && ip->addrs[NDIRECT]) {
+        struct buf *bp = bread(ip->addrs[NDIRECT]);
+        uint32_t *a = (uint32_t *)bp->data;
+
+        uint32_t start = 0;
+        if (new_nblocks > NDIRECT) {
+            start = new_nblocks - NDIRECT;
+        }
+        uint32_t end = old_nblocks - NDIRECT;
+        if (end > NINDIRECT) {
+            end = NINDIRECT;
+        }
+
+        for (uint32_t i = start; i < end; i++) {
+            if (a[i]) {
+                bfree(a[i]);
+                a[i] = 0;
+            }
+        }
+
+        int keep = 0;
+        for (uint32_t i = 0; i < NINDIRECT; i++) {
+            if (a[i]) {
+                keep = 1;
+                break;
+            }
+        }
+
+        if (keep) {
+            bwrite(bp);
+            brelse(bp);
+        } else {
+            brelse(bp);
+            bfree(ip->addrs[NDIRECT]);
+            ip->addrs[NDIRECT] = 0;
+        }
+    }
+
+    ip->size = newsize;
+    iupdate(ip);
 }
 
 // Allocate an inode on disk.
@@ -722,4 +870,3 @@ struct inode* iclone(struct inode *src) {
     
     return dst;
 }
-

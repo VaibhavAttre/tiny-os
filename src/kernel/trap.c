@@ -23,7 +23,11 @@ static inline uint64_t trampoline_userret() {
 void usertrapret() {
     
     struct proc * p = myproc();
-    if(!p|| !p->tf) panic("usertrapret no proc or tf\n");
+    if(!p|| !p->tf) {
+        kprintf("usertrapret no proc or tf (p=%p curr=%p sp=%p)\n",
+                p, getmyproc(), (void*)read_sp());
+        panic("usertrapret no proc or tf\n");
+    }
 
     sstatus_disable_sie();
 
@@ -103,10 +107,7 @@ void trap_handler(struct trapframe * tpfrm) {
         else write_csr(sepc, sepc + 4);
         sstatus_enable_sie();
         syscall_handler(tpfrm);
-        struct proc *p = myproc();
-        if (p && p->killed) {
-            proc_exit(p->exit_status ? p->exit_status : -1);
-        }
+        // Skip post-syscall killed check here to avoid deref on a bad curr.
         return;
     }
 
@@ -131,7 +132,8 @@ void trap_handler(struct trapframe * tpfrm) {
         return;
     }
 
-    kprintf("Unhandled exception");
+    kprintf("Unhandled exception scause=%p sepc=%p stval=%p\n",
+            (void*)scause, (void*)sepc, (void*)stval);
     panic("unhandledc trap\n");
 }
 

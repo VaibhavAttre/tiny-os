@@ -29,6 +29,30 @@ So I decided to take on the challenge of writing a small OS:
 
 ## Roadmap
 
+### Filesystem Status (current)
+
+What exists today in the tree (rough, but accurate):
+
+- **Disk + cache**
+  - VirtIO block driver (QEMU `virt`)
+  - Buffer cache with `bread`, `bwrite`, `brelse`
+  - `mkfs` tool for the on-disk layout
+- **On-disk layout (xv6-style + CoW refcounts)**
+  - Superblock, bitmap, refcount blocks, inodes, data blocks
+  - Direct + single-indirect blocks
+- **Inodes + directories**
+  - `iget/ilock/iupdate`, `readi/writei`
+  - `dirlookup/dirlink`, path walk (`namei`)
+- **Syscalls + basic UX**
+  - `open/read/write/close`, `mkdir`, `unlink`, `fstat`
+  - `chdir/getcwd` (root-only `getcwd` stub)
+  - `dup`
+- **CoW features**
+  - Block-level refcounting + CoW on write
+  - `clone(src, dst)` reflink syscall (shares blocks)
+
+This means the current filesystem is functional and CoW-aware at the block layer, but it is not yet the B-tree metadata design described in Phases 8-12.
+
 ### Phase 1 — Core Basics
 
 - [x] **Console I/O**
@@ -111,11 +135,11 @@ So I decided to take on the challenge of writing a small OS:
 
 Goal: treat disk as a reliable **block device** with caching + writeback. This is required before any “modern CoW FS”.
 
-- [ ] **VirtIO Block Driver (QEMU `virt`)**
+- [x] **VirtIO Block Driver (QEMU `virt`)**
   - Device discovery + feature negotiation
   - Virtqueue setup
   - Sector `read/write` (polling first; interrupts later)
-- [ ] **Buffer / Block Cache**
+- [x] **Buffer / Block Cache**
   - `bread`, `bwrite`, `brelse`
   - Dirty tracking + flush path
   - Simple eviction policy
@@ -194,16 +218,17 @@ Done when: you can `mkdir`, create, path-lookup, and list directories entirely f
 
 Goal: make user programs actually read/write **disk-backed files**.
 
-- [ ] **CoW file writes**
-  - Allocate new data extent(s)
-  - Update file extent items in FS tree
-  - Overwrite-in-middle must not corrupt other files
-- [ ] **Read path**
-  - Resolve extents → disk reads → `copyout` to user
-  - Verify checksums (if enabled)
-- [ ] **Syscalls**
+- [x] **CoW file writes (block-level)**
+  - CoW on shared blocks via refcounts
+  - Overwrite-in-middle does not corrupt other files
+- [x] **Read path**
+  - Block lookup → disk reads → `copyout` to user
+- [x] **Syscalls**
   - `open`, `read`, `write`, `close`
-  - Later: `mkdir`, `unlink`, `rename`, `fstat`, `chdir`
+  - `mkdir`, `unlink`, `fstat`, `chdir`, `getcwd`, `dup`
+  - `clone` (reflink) syscall
+
+Note: this phase is implemented on top of the simple inode layout (no extents yet).
 
 Done when: a user program can create a file, write it, reboot, read it back, and pass stress tests.
 
@@ -261,6 +286,40 @@ This is my **first OS project**, so I’m deliberately starting simple:
   Implement low-level optimizations such as buddy allocators
 ---
 
+## Next Best Path (to reach the CoW B-tree design)
+
+If the goal is to finish the filesystem as described in Phases 8-12, the most productive path is:
+
+1) **Finish inode lifecycle + truncation**
+   - Implement `itrunc()` to drop blocks safely (respecting CoW refcounts).
+   - Update `unlink()` to free blocks when `nlink` reaches 0.
+   - Add `O_TRUNC` support in `open` and a simple `truncate` syscall.
+2) **Crash consistency + tooling**
+   - Add a minimal journal or ordered-write discipline for inode/bitmap updates.
+   - Add a `fsck`-style checker in `tools/` to validate bitmap/refcounts/inodes.
+3) **Metadata integrity**
+   - Add checksums for metadata blocks (superblock, inodes, indirects).
+   - Add multiple superblocks + generation selection at mount.
+4) **B-tree metadata engine (Phase 8)**
+   - Standalone on-disk B-tree + CoW path copying.
+   - Transaction commit protocol (write new roots → superblock last).
+5) **Space manager + extents (Phase 9)**
+   - Move data allocation from block pointers to extents.
+   - Deferred frees based on transaction generation.
+6) **Filesystem trees (Phase 10)**
+   - Root tree, FS tree, extent tree (optional checksum tree).
+7) **User-facing polish**
+   - `rename`, `link`, directory iteration (`readdir`), and full `getcwd`.
+
+### Extra Features (nice-to-have)
+
+- **Online scrub / verify** (walk metadata + data checksums)
+- **Snapshots** (cheap subvolume roots)
+- **Reflink copy-on-write clones** (already present; extend to dirs later)
+- **Simple defrag** (rewrite fragmented extents)
+- **Space quotas** (per inode or per subvolume)
+- **Compression** (per extent, optional)
+
 ## Goals
 
 - Build intuition about:
@@ -280,3 +339,4 @@ This is my **first OS project**, so I’m deliberately starting simple:
 
 make all
 qemu-system-riscv64 -machine virt -kernel kernel.elf -nographic
+```

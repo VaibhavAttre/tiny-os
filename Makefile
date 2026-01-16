@@ -24,6 +24,16 @@ USERB_ELF    := $(BUILD)/userB.elf
 USERB_BLOB_C := $(BUILD)/userB_blob.c
 USERB_BLOB_O := $(BUILD)/userB_blob.o
 
+USERC_ASM    := src/user/testC.S
+USERC_ELF    := $(BUILD)/userC.elf
+USERC_BLOB_C := $(BUILD)/userC_blob.c
+USERC_BLOB_O := $(BUILD)/userC_blob.o
+
+USERD_ASM    := src/user/testD.S
+USERD_ELF    := $(BUILD)/userD.elf
+USERD_BLOB_C := $(BUILD)/userD_blob.c
+USERD_BLOB_O := $(BUILD)/userD_blob.o
+
 $(BUILD):
 	mkdir -p $(BUILD)
 
@@ -54,6 +64,31 @@ $(USERB_BLOB_C): $(USERB_ELF) | $(BUILD)
 $(USERB_BLOB_O): $(USERB_BLOB_C) | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+$(USERC_ELF): $(USERC_ASM) | $(BUILD)
+	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
+	  -march=rv64imac -mabi=lp64 \
+	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -o $@ $<
+
+$(USERC_BLOB_C): $(USERC_ELF) | $(BUILD)
+	@xxd -i $< | sed -e 's/build_userC_elf/userC_elf/g' \
+	               -e 's/build_userC_elf_len/userC_elf_len/g' > $@
+
+$(USERC_BLOB_O): $(USERC_BLOB_C) | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(USERD_ELF): $(USERD_ASM) | $(BUILD)
+	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
+	  -march=rv64imac -mabi=lp64 \
+	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -o $@ $<
+
+$(USERD_BLOB_C): $(USERD_ELF) | $(BUILD)
+	@xxd -i $< | sed -e 's/build_userD_elf/userD_elf/g' \
+	               -e 's/build_userD_elf_len/userD_elf_len/g' > $@
+
+$(USERD_BLOB_O): $(USERD_BLOB_C) | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
 $(USER_HDR): | $(BUILD)
 	@echo "Generating $@ (extern declarations)"
@@ -87,10 +122,16 @@ OBJS := \
 	$(BUILD)/virtio_blk.o \
 	$(BUILD)/buf.o \
 	$(BUILD)/fs.o \
+	$(BUILD)/btree.o \
+	$(BUILD)/extent.o \
+	$(BUILD)/tree.o \
+	$(BUILD)/fs_tree.o \
 	$(USERA_BLOB_O) \
 	$(USERB_BLOB_O) \
+	$(USERC_BLOB_O) \
+	$(USERD_BLOB_O) \
 	
-all: include/user_progs.h $(USERA_BLOB_O) $(USERB_BLOB_O) kernel.elf
+all: include/user_progs.h $(USERA_BLOB_O) $(USERB_BLOB_O) $(USERC_BLOB_O) $(USERD_BLOB_O) kernel.elf
 
 
 $(BUILD)/boot.o: src/arch/riscv/boot.S | $(BUILD)
@@ -156,10 +197,26 @@ $(BUILD)/buf.o: src/kernel/buf.c | $(BUILD)
 $(BUILD)/fs.o: src/kernel/fs.c | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD)/btree.o: src/kernel/btree.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/extent.o: src/kernel/extent.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/tree.o: src/kernel/tree.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/fs_tree.o: src/kernel/fs_tree.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
 # Host tools
 MKFS := tools/mkfs
+FSCK := tools/fsck
 
 $(MKFS): tools/mkfs.c
+	$(CC) -Wall -o $@ $<
+
+$(FSCK): tools/fsck.c
 	$(CC) -Wall -o $@ $<
 
 kernel.elf: $(OBJS) linker.ld

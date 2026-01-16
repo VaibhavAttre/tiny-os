@@ -6,6 +6,10 @@
 #include <kernel/trap.h>
 #include <kernel/buf.h>
 #include <kernel/fs.h>
+#include <kernel/btree.h>
+#include <kernel/extent.h>
+#include <kernel/tree.h>
+#include <kernel/fs_tree.h>
 #include "kernel/sched.h"
 #include "kernel/kalloc.h"
 #include "kernel/vm.h"
@@ -247,7 +251,19 @@ static void test_filesystem(void) {
     kprintf("fs: TEST 1 - Creating /mydir...\n");
     struct inode *dir = create("/mydir", T_DIR);
     if (!dir) {
-        kprintf("fs: FAIL - couldn't create /mydir\n");
+        struct inode *exist = namei("/mydir");
+        if (exist) {
+            ilock(exist);
+            if (exist->type == T_DIR) {
+                kprintf("fs: OK - /mydir already exists\n");
+            } else {
+                kprintf("fs: FAIL - /mydir exists but not a directory\n");
+            }
+            iunlock(exist);
+            iput(exist);
+        } else {
+            kprintf("fs: FAIL - couldn't create /mydir\n");
+        }
     } else {
         kprintf("fs: OK - created /mydir (inum=%d)\n", dir->inum);
         iunlock(dir);
@@ -286,7 +302,19 @@ static void test_filesystem(void) {
     kprintf("fs: TEST 4 - Creating /mydir/subdir...\n");
     struct inode *subdir = create("/mydir/subdir", T_DIR);
     if (!subdir) {
-        kprintf("fs: FAIL - couldn't create /mydir/subdir\n");
+        struct inode *exist = namei("/mydir/subdir");
+        if (exist) {
+            ilock(exist);
+            if (exist->type == T_DIR) {
+                kprintf("fs: OK - /mydir/subdir already exists\n");
+            } else {
+                kprintf("fs: FAIL - /mydir/subdir exists but not a directory\n");
+            }
+            iunlock(exist);
+            iput(exist);
+        } else {
+            kprintf("fs: FAIL - couldn't create /mydir/subdir\n");
+        }
     } else {
         kprintf("fs: OK - created /mydir/subdir (inum=%d)\n", subdir->inum);
         iunlock(subdir);
@@ -321,6 +349,255 @@ static void test_filesystem(void) {
     kprintf("fs: Filesystem tests complete!\n");
 }
 
+static void test_btree(void) {
+    kprintf("btree: testing btree...\n");
+
+    uint32_t root = 0;
+    uint64_t val = 0;
+
+    if (btree_insert(root, 10, 100, &root) < 0 ||
+        btree_insert(root, 5, 50, &root) < 0 ||
+        btree_insert(root, 20, 200, &root) < 0 ||
+        btree_insert(root, 15, 150, &root) < 0) {
+        kprintf("btree: FAIL - insert\n");
+        return;
+    }
+
+    uint64_t out = 0;
+    if (btree_lookup(root, 15, &out) < 0 || out != 150) {
+        kprintf("btree: FAIL - lookup\n");
+        return;
+    }
+
+    if (btree_lookup(sb.btree_root, 7, &val) == 0) {
+        kprintf("btree: FAIL - unexpected hit\n");
+        return;
+    }
+
+    kprintf("btree: OK\n");
+}
+
+static void test_btree_persist(void) {
+    kprintf("btree: testing persistence...\n");
+
+    uint64_t out = 0;
+    if (sb.btree_root != 0 &&
+        btree_lookup(sb.btree_root, 2, &out) == 0 && out == 222) {
+        kprintf("btree: persistence OK\n");
+        return;
+    }
+
+    struct btree_txn tx;
+    btree_txn_begin(&tx);
+    if (btree_txn_insert(&tx, 1, 111) < 0 ||
+        btree_txn_insert(&tx, 2, 222) < 0 ||
+        btree_txn_insert(&tx, 3, 333) < 0 ||
+        btree_txn_commit(&tx) < 0) {
+        kprintf("btree: FAIL - persist commit\n");
+        return;
+    }
+
+    out = 0;
+    if (btree_lookup(sb.btree_root, 2, &out) < 0 || out != 222) {
+        kprintf("btree: FAIL - persist lookup\n");
+        return;
+    }
+
+    kprintf("btree: persisted root=%u\n", sb.btree_root);
+}
+
+static void test_extent_alloc(void) {
+    kprintf("extent: testing extent allocator...\n");
+
+    extent_init();
+    if (sb.extent_root == 0) {
+        kprintf("extent: FAIL - no extent root\n");
+        return;
+    }
+
+    struct extent e1;
+    if (extent_alloc(8, &e1) < 0) {
+        kprintf("extent: FAIL - alloc\n");
+        return;
+    }
+
+    extent_free(e1.start, e1.len);
+    if (extent_commit() < 0) {
+        kprintf("extent: FAIL - commit\n");
+        return;
+    }
+
+    struct extent e2;
+    if (extent_alloc(8, &e2) < 0) {
+        kprintf("extent: FAIL - realloc\n");
+        return;
+    }
+
+    kprintf("extent: OK (alloc %u len %u)\n", e2.start, e2.len);
+}
+
+static void test_root_tree(void) {
+    kprintf("tree: testing root tree...\n");
+
+    tree_init();
+    if (sb.root_tree == 0) {
+        kprintf("tree: FAIL - no root tree\n");
+        return;
+    }
+
+    uint64_t ext_root = 0;
+    uint64_t fs_root = 0;
+    if (tree_root_get(ROOT_ITEM_EXTENT_ROOT, &ext_root) < 0 ||
+        tree_root_get(ROOT_ITEM_FS_ROOT, &fs_root) < 0) {
+        kprintf("tree: FAIL - lookup\n");
+        return;
+    }
+
+    kprintf("tree: OK (extent=%u fs=%u)\n",
+            (unsigned)ext_root, (unsigned)fs_root);
+}
+
+static void test_fs_tree(void) {
+    kprintf("fs_tree: testing fs tree...\n");
+
+    fs_tree_init();
+    if (fs_tree_set_inode(42, T_FILE, 1234) < 0) {
+        kprintf("fs_tree: FAIL - set\n");
+        return;
+    }
+
+    uint64_t size = 0;
+    uint16_t type = 0;
+    if (fs_tree_get_inode(42, &type, &size) < 0 ||
+        type != T_FILE || size != 1234) {
+        kprintf("fs_tree: FAIL - get\n");
+        return;
+    }
+
+    if (fs_tree_dir_add(1, "hello", 42) < 0) {
+        kprintf("fs_tree: FAIL - dir add\n");
+        return;
+    }
+    uint32_t out_ino = 0;
+    if (fs_tree_dir_lookup(1, "hello", &out_ino) < 0 || out_ino != 42) {
+        kprintf("fs_tree: FAIL - dir lookup\n");
+        return;
+    }
+
+    struct extent ex;
+    if (extent_alloc(4, &ex) < 0) {
+        kprintf("fs_tree: FAIL - extent alloc\n");
+        return;
+    }
+    if (fs_tree_extent_add(42, 0, ex.start, ex.len) < 0) {
+        kprintf("fs_tree: FAIL - extent add\n");
+        return;
+    }
+    uint32_t start = 0, len = 0;
+    if (fs_tree_extent_lookup(42, 0, &start, &len) < 0 ||
+        start != ex.start || len != ex.len) {
+        kprintf("fs_tree: FAIL - extent lookup\n");
+        return;
+    }
+
+    const char msg[] = "fs_tree data";
+    const char msg2[] = "second extent";
+    char buf[32];
+    char buf2[32];
+    memzero(buf, sizeof(buf));
+    memzero(buf2, sizeof(buf2));
+    if (fs_tree_file_write(100, 0, msg, sizeof(msg)) < 0) {
+        kprintf("fs_tree: FAIL - file write\n");
+        return;
+    }
+    if (fs_tree_file_write(100, BSIZE * 2, msg2, sizeof(msg2)) < 0) {
+        kprintf("fs_tree: FAIL - file write 2\n");
+        return;
+    }
+    if (fs_tree_file_read(100, 0, buf, sizeof(msg)) < 0) {
+        kprintf("fs_tree: FAIL - file read\n");
+        return;
+    }
+    if (fs_tree_file_read(100, BSIZE * 2, buf2, sizeof(msg2)) < 0) {
+        kprintf("fs_tree: FAIL - file read 2\n");
+        return;
+    }
+    int ok = 1;
+    for (unsigned i = 0; i < sizeof(msg); i++) {
+        if (buf[i] != msg[i]) {
+            ok = 0;
+            break;
+        }
+    }
+    if (ok) {
+        for (unsigned i = 0; i < sizeof(msg2); i++) {
+            if (buf2[i] != msg2[i]) {
+                ok = 0;
+                break;
+            }
+        }
+    }
+    if (!ok) {
+        kprintf("fs_tree: FAIL - file data mismatch\n");
+        return;
+    }
+
+    if (fs_tree_create_file("/rename_a", 0) < 0 ||
+        fs_tree_rename_path("/rename_a", "/rename_b") < 0) {
+        kprintf("fs_tree: FAIL - rename\n");
+        return;
+    }
+    uint32_t rino = 0;
+    if (fs_tree_lookup_path("/rename_b", &rino) < 0 || rino == 0) {
+        kprintf("fs_tree: FAIL - rename lookup\n");
+        return;
+    }
+    if (fs_tree_unlink_path("/rename_b") < 0 ||
+        fs_tree_lookup_path("/rename_b", &rino) == 0) {
+        kprintf("fs_tree: FAIL - unlink\n");
+        return;
+    }
+
+    if (fs_tree_create_dir("/dir") < 0) {
+        kprintf("fs_tree: FAIL - mkdir\n");
+        return;
+    }
+    uint32_t dino = 0;
+    uint16_t dtype = 0;
+    uint64_t dsize = 0;
+    if (fs_tree_lookup_path("/dir", &dino) < 0 ||
+        fs_tree_get_inode(dino, &dtype, &dsize) < 0 ||
+        dtype != T_DIR) {
+        kprintf("fs_tree: FAIL - mkdir lookup\n");
+        return;
+    }
+    if (fs_tree_unlink_path("/dir") < 0) {
+        kprintf("fs_tree: FAIL - rmdir\n");
+        return;
+    }
+
+    if (fs_tree_create_file("/a", 0) < 0 ||
+        fs_tree_create_file("/b", 0) < 0) {
+        kprintf("fs_tree: FAIL - readdir setup\n");
+        return;
+    }
+    uint64_t cookie = 0;
+    char name[32];
+    uint32_t ino = 0;
+    int seen_a = 0, seen_b = 0;
+    while (fs_tree_readdir(1, &cookie, name, sizeof(name), &ino) == 0) {
+        if (strncmp(name, "a", sizeof(name)) == 0) seen_a = 1;
+        if (strncmp(name, "b", sizeof(name)) == 0) seen_b = 1;
+        if (seen_a && seen_b) break;
+    }
+    if (!seen_a || !seen_b) {
+        kprintf("fs_tree: FAIL - readdir\n");
+        return;
+    }
+
+    kprintf("fs_tree: OK\n");
+}
+
 void kmain(void) {
     uart_init();
     trap_init();
@@ -342,6 +619,11 @@ void kmain(void) {
     
     // Test filesystem
     test_filesystem();
+    test_btree();
+    test_btree_persist();
+    test_extent_alloc();
+    test_root_tree();
+    test_fs_tree();
 
     if (sched_create_userproc(userA_elf, (uint64_t)userA_elf_len) < 0) {
         kprintf("failed to create init user proc\n");
@@ -349,6 +631,18 @@ void kmain(void) {
     }
 
     kprintf("spawned init user proc A (ELF) len=%u\n", userA_elf_len);
+
+    if (sched_create_userproc(userC_elf, (uint64_t)userC_elf_len) < 0) {
+        kprintf("failed to create user proc C\n");
+    } else {
+        kprintf("spawned user proc C (ELF) len=%u\n", userC_elf_len);
+    }
+
+    if (sched_create_userproc(userD_elf, (uint64_t)userD_elf_len) < 0) {
+        kprintf("failed to create user proc D\n");
+    } else {
+        kprintf("spawned user proc D (ELF) len=%u\n", userD_elf_len);
+    }
     
     scheduler();
 
