@@ -286,31 +286,6 @@ This is my **first OS project**, so I’m deliberately starting simple:
   Implement low-level optimizations such as buddy allocators
 ---
 
-## Next Best Path (to reach the CoW B-tree design)
-
-If the goal is to finish the filesystem as described in Phases 8-12, the most productive path is:
-
-1) **Finish inode lifecycle + truncation**
-   - Implement `itrunc()` to drop blocks safely (respecting CoW refcounts).
-   - Update `unlink()` to free blocks when `nlink` reaches 0.
-   - Add `O_TRUNC` support in `open` and a simple `truncate` syscall.
-2) **Crash consistency + tooling**
-   - Add a minimal journal or ordered-write discipline for inode/bitmap updates.
-   - Add a `fsck`-style checker in `tools/` to validate bitmap/refcounts/inodes.
-3) **Metadata integrity**
-   - Add checksums for metadata blocks (superblock, inodes, indirects).
-   - Add multiple superblocks + generation selection at mount.
-4) **B-tree metadata engine (Phase 8)**
-   - Standalone on-disk B-tree + CoW path copying.
-   - Transaction commit protocol (write new roots → superblock last).
-5) **Space manager + extents (Phase 9)**
-   - Move data allocation from block pointers to extents.
-   - Deferred frees based on transaction generation.
-6) **Filesystem trees (Phase 10)**
-   - Root tree, FS tree, extent tree (optional checksum tree).
-7) **User-facing polish**
-   - `rename`, `link`, directory iteration (`readdir`), and full `getcwd`.
-
 ### Extra Features (nice-to-have)
 
 - **Online scrub / verify** (walk metadata + data checksums)
