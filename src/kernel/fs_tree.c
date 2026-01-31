@@ -80,7 +80,7 @@ static void inode_unpack(uint64_t v, uint16_t *type, uint64_t *size) {
     uint16_t t = (uint16_t)(v >> 48);
     uint64_t s = v & 0x0000FFFFFFFFFFFFULL;
     if (t == 0) {
-        t = T_FILE;  // Backward-compat with old size-only encoding.
+        t = T_FILE; // Backward-compat with old size-only encoding.
     }
     if (type) *type = t;
     if (size) *size = s;
@@ -237,7 +237,6 @@ int fs_tree_set_inode(uint32_t ino, uint16_t type, uint64_t size) {
         return -1;
     }
 
-    // Update root tree to point at new FS tree root.
     if (fs_tree_update_fs_root(new_root) < 0) {
         return -1;
     }
@@ -318,6 +317,18 @@ static int fs_tree_walk_at(uint32_t start, const char *path,
             return 0;
         }
 
+        if (name[0] == '.' && name[1] == 0) {
+            continue;
+        }
+        if (name[0] == '.' && name[1] == '.' && name[2] == 0) {
+            uint32_t parent = 0;
+            if (fs_tree_get_parent(cur, &parent) < 0 || parent == 0) {
+                parent = cur;
+            }
+            cur = parent;
+            continue;
+        }
+
         uint32_t next = 0;
         if (fs_tree_dir_lookup(cur, name, &next) < 0) {
             return -1;
@@ -334,6 +345,18 @@ int fs_tree_lookup_path_at(uint32_t start, const char *path, uint32_t *ino_out) 
     if (fs_tree_walk_at(start, path, &parent, name) < 0) return -1;
     if (name[0] == 0) {
         if (ino_out) *ino_out = parent;
+        return 0;
+    }
+    if (name[0] == '.' && name[1] == 0) {
+        if (ino_out) *ino_out = parent;
+        return 0;
+    }
+    if (name[0] == '.' && name[1] == '.' && name[2] == 0) {
+        uint32_t p = 0;
+        if (fs_tree_get_parent(parent, &p) < 0 || p == 0) {
+            p = parent;
+        }
+        if (ino_out) *ino_out = p;
         return 0;
     }
     return fs_tree_dir_lookup(parent, name, ino_out);

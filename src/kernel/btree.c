@@ -8,7 +8,7 @@ static uint32_t btree_checksum(const struct btree_node *node) {
     const uint8_t *p = (const uint8_t *)node;
     uint32_t csum_off = (uint32_t)((const uint8_t *)&node->hdr.checksum - p);
     uint32_t rsv_off = (uint32_t)((const uint8_t *)&node->hdr.reserved - p);
-    uint32_t hash = 2166136261u;  // FNV-1a
+    uint32_t hash = 2166136261u; // FNV-1a
     for (uint32_t i = 0; i < sizeof(*node); i++) {
         uint8_t v = p[i];
         if (i >= csum_off && i < csum_off + sizeof(node->hdr.checksum)) {
@@ -86,7 +86,6 @@ int btree_lookup(uint32_t root_block, uint64_t key, uint64_t *out_value) {
             i++;
         }
 
-        // Internal node: choose child i.
         uint64_t child = node.children[i];
         if (child == 0 || child >= sb.nblocks) {
             return -1;
@@ -277,7 +276,6 @@ static int btree_insert_leaf(const struct btree_node *old,
         return 0;
     }
 
-    // Split leaf.
     uint16_t mid = total / 2;
     uint32_t leftblk = balloc();
     uint32_t rightblk = balloc();
@@ -377,7 +375,6 @@ static int btree_insert_internal(const struct btree_node *old,
         return 0;
     }
 
-    // Split internal node.
     uint16_t mid = total / 2;
     uint32_t leftblk = balloc();
     uint32_t rightblk = balloc();

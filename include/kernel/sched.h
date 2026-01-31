@@ -4,7 +4,6 @@
 #include "kernel/trapframe.h"
 #include "kernel/file.h"
 
-// Forward declaration
 struct inode;
 
 #define NPROC 512
@@ -46,11 +45,11 @@ struct context {
     uint64_t s0;
     uint64_t s1;
     uint64_t s2;
-    uint64_t s3;    
+    uint64_t s3;
     uint64_t s4;
     uint64_t s5;
     uint64_t s6;
-    uint64_t s7;   
+    uint64_t s7;
     uint64_t s8;
     uint64_t s9;
     uint64_t s10;
@@ -80,17 +79,15 @@ struct proc {
     int exit_status;
     void *ucode;
     void *ustack;
-    
-    // File descriptors
+
     struct file *ofile[NOFILE];
-    
-    // Current working directory
+
     struct inode *cwd;
     uint32_t tree_cwd;
     uint64_t subvol_id;
-    
+
     struct proc *parent;
-    int pid;  
+    int pid;
 };
 
 void sched_init();
@@ -115,12 +112,10 @@ void sched_trace_state(uint32_t *r, uint32_t *w);
 int sched_create_userproc(const void * code, uint64_t sz);
 int proc_exec(struct proc * p, const uint8_t * code, uint64_t sz);
 
-//implementedin assmebly 
 void swtch(struct context * old, struct context * new);
 
 void proc_kill(struct proc *p, int status);
 void proc_exit(int status) __attribute__((noreturn));
 
-// Fork and wait
 int proc_fork(void);
 int proc_wait(int *status);

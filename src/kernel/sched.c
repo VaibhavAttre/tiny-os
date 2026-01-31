@@ -13,11 +13,6 @@
 #include "kernel/file.h"
 #include "kernel/fs.h"
 
-/*
-https://danielmangum.com/posts/risc-v-bytes-timer-interrupts/
-https://book.rvemu.app/hardware-components/03-csrs.html
-*/
-
 #define USER_TEXT_VA 0x0UL
 #define USER_STACK_TOP TRAPFRAME
 #define USER_STACK_BASE (USER_STACK_TOP - PGSIZE)
@@ -27,7 +22,7 @@ volatile int in_scheduler = 0;
 static struct proc procs[NPROC];
 static struct context scheduler_context;
 static struct proc * curr = 0;
-static int nextpid = 1;  // Global PID counter
+static int nextpid = 1; // Global PID counter
 
 #define TRACE_N 512
 
@@ -58,7 +53,6 @@ static volatile uint32_t trace_w = 0;
 static volatile uint32_t trace_r = 0;
 static volatile uint32_t trace_drops = 0;
 static int trace_enabled = 1;
-
 
 extern void usertrapret();
 
@@ -102,6 +96,10 @@ static void fmt_pid(char * out, int16_t id, uint8_t is_user) {
 }
 
 static void firstrun() {
+    if (curr && curr->tf) {
+        kprintf("firstrun: pid=%d epc=%p sp=%p\n",
+                curr->id, (void*)curr->tf->epc, (void*)curr->tf->sp);
+    }
     usertrapret();
     for(;;) {asm volatile("wfi");}
 }
@@ -181,13 +179,6 @@ static int load_elf(pagetable_t pt, uint8_t * img, uint64_t len, uint64_t * entr
                 kfree(page);
                 return -1;
             }
-                
-            /*
-                file-backed:  [0x1050 -------------------- 0x2850)
-                page:                       [0x2000 ----------- 0x3000)
-                overlap:                     [0x2000 ---- 0x2850)
-
-            */
 
             uint64_t file_lo = ph.p_vaddr;
             uint64_t file_hi = ph.p_vaddr + ph.p_filesz;
@@ -196,7 +187,7 @@ static int load_elf(pagetable_t pt, uint8_t * img, uint64_t len, uint64_t * entr
             uint64_t copy_lo = (file_lo > page_lo) ? file_lo : page_lo;
             uint64_t copy_hi = (file_hi < page_hi) ? file_hi : page_hi;
             if(copy_hi > copy_lo) {
-                
+
                 uint64_t src_off = ph.p_offset + (copy_lo - file_lo);
                 uint64_t dst_off = copy_lo - page_lo;
                 memcopy((uint8_t*)page + dst_off, img + src_off, copy_hi - copy_lo);
@@ -250,23 +241,25 @@ static void pt_freewalk_level(pagetable_t pt, int level, uint64_t va_base) {
             pt[i] = 0;
         }
     }
-}       
+}
 
 static void pt_freewalk(pagetable_t pt) {
     pt_freewalk_level(pt, 2, 0);
 }
 
+static void * kstack_alloc(void) {
+    return kalloc_aligned_n(KSTACKS, KSTACK_SIZE);
+}
+
 static void freeproc(struct proc * proc) {
 
-    // Close all open file descriptors
     for (int fd = 0; fd < NOFILE; fd++) {
         if (proc->ofile[fd]) {
             fileclose(proc->ofile[fd]);
             proc->ofile[fd] = 0;
         }
     }
-    
-    // Release cwd
+
     if (proc->cwd) {
         iput(proc->cwd);
         proc->cwd = 0;
@@ -290,11 +283,10 @@ static void freeproc(struct proc * proc) {
         proc->tf = 0;
     }
     if(proc->kstack_base) {
-        kfree(proc->kstack_base);
+        kfree_n(proc->kstack_base, KSTACKS);
         proc->kstack_base = 0;
         proc->kstack_top = 0;
-    }    
-    // Reset (match struct proc exactly)
+    }
     proc->state = UNUSED;
     proc->killed = 0;
     proc->exit_status = 0;
@@ -325,92 +317,60 @@ void proc_exit(int status) {
     p->killed = 1;
     p->exit_status = status;
     p->state = ZOMBIE;
-    
-    // Wake up parent if waiting
+
     if (p->parent) {
         wakeup(p->parent);
     }
-    
-    // Reparent children to init (process 0) if any
+
     for (int i = 0; i < NPROC; i++) {
         if (procs[i].parent == p) {
-            procs[i].parent = &procs[0];  // init process
+            procs[i].parent = &procs[0]; // init process
         }
     }
-    
+
     swtch(&p->ctx, &scheduler_context);
     panic("proc_exit: returned\n");
 }
 
-// Copy page table from parent to child for fork
-// Returns 0 on success, -1 on failure
-static int uvmcopy(pagetable_t old, pagetable_t new, uint64_t sz) {
-    // Walk the old page table and copy all user pages
-    for (int i = 0; i < 512; i++) {
+static int uvmcopy_level(pagetable_t old, pagetable_t new, int level, uint64_t va_base) {
+    for (int i = 0; i < 512; ++i) {
+        uint64_t va = va_base + ((uint64_t)i << PXSHIFT(level));
+        if (va >= MAXVA) break;
+
         pte_t pte = old[i];
         if ((pte & PTE_V) == 0) continue;
-        
+
         if ((pte & (PTE_R | PTE_W | PTE_X)) == 0) {
-            // Intermediate page table
-            pagetable_t child_old = (pagetable_t)PTE2PA(pte);
-            pagetable_t child_new = (pagetable_t)kalloc();
-            if (!child_new) return -1;
-            memzero(child_new, PGSIZE);
-            new[i] = PA2PTE((uint64_t)child_new) | PTE_V;
-            
-            // Recursively copy level 1
-            for (int j = 0; j < 512; j++) {
-                pte_t pte1 = child_old[j];
-                if ((pte1 & PTE_V) == 0) continue;
-                
-                if ((pte1 & (PTE_R | PTE_W | PTE_X)) == 0) {
-                    // Another intermediate page table (level 0)
-                    pagetable_t leaf_old = (pagetable_t)PTE2PA(pte1);
-                    pagetable_t leaf_new = (pagetable_t)kalloc();
-                    if (!leaf_new) return -1;
-                    memzero(leaf_new, PGSIZE);
-                    child_new[j] = PA2PTE((uint64_t)leaf_new) | PTE_V;
-                    
-                    // Copy all leaf pages
-                    for (int k = 0; k < 512; k++) {
-                        pte_t pte0 = leaf_old[k];
-                        if ((pte0 & PTE_V) == 0) continue;
-                        
-                        // Only copy user pages (PTE_U)
-                        if (pte0 & PTE_U) {
-                            void *mem = kalloc();
-                            if (!mem) return -1;
-                            memcopy(mem, (void*)PTE2PA(pte0), PGSIZE);
-                            leaf_new[k] = PA2PTE((uint64_t)mem) | (pte0 & 0x3FF);
-                        }
-                        // Non-user pages (like trapframe) are skipped - child will get its own
-                    }
-                } else if (pte1 & PTE_U) {
-                    // Direct leaf entry at level 1 with user bit
-                    void *mem = kalloc();
-                    if (!mem) return -1;
-                    memcopy(mem, (void*)PTE2PA(pte1), PGSIZE);
-                    child_new[j] = PA2PTE((uint64_t)mem) | (pte1 & 0x3FF);
-                }
-            }
-        } else if (pte & PTE_U) {
-            // Direct leaf entry at level 2 with user bit (huge page)
+            if (level == 0) continue;
+            pagetable_t child = (pagetable_t)PTE2PA(pte);
+            if (uvmcopy_level(child, new, level - 1, va) < 0) return -1;
+        } else {
+            if ((pte & PTE_U) == 0) continue;
+
+            uint64_t pa = PTE2PA(pte);
             void *mem = kalloc();
             if (!mem) return -1;
-            memcopy(mem, (void*)PTE2PA(pte), PGSIZE);
-            new[i] = PA2PTE((uint64_t)mem) | (pte & 0x3FF);
+            memcopy(mem, (void*)pa, PGSIZE);
+
+            uint64_t flags = (pte & 0x3FF) & ~PTE_V;
+            if (vm_map(new, va, (uint64_t)mem, PGSIZE, flags) < 0) {
+                kfree(mem);
+                return -1;
+            }
         }
     }
     return 0;
 }
 
-// Fork: create a copy of the current process
-// Returns: child PID to parent, 0 to child, -1 on error
+static int uvmcopy(pagetable_t old, pagetable_t new, uint64_t sz) {
+    (void)sz;
+    return uvmcopy_level(old, new, 2, 0);
+}
+
 int proc_fork(void) {
     struct proc *p = getmyproc();
     if (!p || !p->user) return -1;
-    
-    // Find unused proc slot
+
     struct proc *np = 0;
     for (int i = 0; i < NPROC; i++) {
         if (procs[i].state == UNUSED) {
@@ -419,60 +379,51 @@ int proc_fork(void) {
         }
     }
     if (!np) return -1;
-    
-    // Allocate kernel stack
-    void *kstack = kalloc();
+
+    void *kstack = kstack_alloc();
     if (!kstack) return -1;
-    memzero(kstack, PGSIZE);
-    
+
     np->kstack_base = kstack;
     np->kstack_top = (uint64_t)kstack + KSTACK_SIZE;
     *(struct proc **)kstack = np;
-    
-    // Allocate trapframe
+
     np->tf = (struct trapframe *)kalloc();
     if (!np->tf) {
-        kfree(kstack);
+        kfree_n(kstack, KSTACKS);
         return -1;
     }
-    
-    // Copy parent's trapframe
+
     memcopy(np->tf, p->tf, sizeof(struct trapframe));
-    
-    // Child returns 0 from fork
+
     np->tf->a0 = 0;
-    
-    // Allocate new page table
+
     pagetable_t newpt = uvmcreate();
     if (!newpt) {
         kfree((void*)np->tf);
-        kfree(kstack);
+        kfree_n(kstack, KSTACKS);
         return -1;
     }
-    
-    // Map trapframe (child's own)
+
     if (vm_map(newpt, TRAPFRAME, (uint64_t)np->tf, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
         kfree((void*)newpt);
         kfree((void*)np->tf);
-        kfree(kstack);
+        kfree_n(kstack, KSTACKS);
         return -1;
     }
-    
-    // Copy user address space
+
     if (uvmcopy(p->pagetable, newpt, 0) < 0) {
         pt_freewalk(newpt);
         kfree((void*)newpt);
         kfree((void*)np->tf);
-        kfree(kstack);
+        kfree_n(kstack, KSTACKS);
         return -1;
     }
-    
+
     np->pagetable = newpt;
     np->user = 1;
     np->uentry = p->uentry;
     np->usp = p->usp;
-    
-    // Copy file descriptors
+
     for (int i = 0; i < NOFILE; i++) {
         if (p->ofile[i]) {
             np->ofile[i] = filedup(p->ofile[i]);
@@ -480,68 +431,58 @@ int proc_fork(void) {
             np->ofile[i] = 0;
         }
     }
-    
-    // Copy cwd
+
     np->cwd = idup(p->cwd);
     np->tree_cwd = p->tree_cwd;
     np->subvol_id = p->subvol_id;
-    
-    // Set up parent/child relationship
+
     np->parent = p;
     np->pid = nextpid++;
     np->id = np - procs;
-    
-    // Set up context to return from fork via firstrun
+
     np->ctx.ra = (uint64_t)firstrun;
     np->ctx.sp = np->kstack_top;
-    
+
     np->state = RUNNABLE;
-    
+
     return np->pid;
 }
 
-// Wait for a child process to exit
-// Returns child PID, stores exit status in *status
 int proc_wait(int *status) {
     struct proc *p = getmyproc();
     if (!p) return -1;
-    
+
     for (;;) {
         int havekids = 0;
-        
-        // Look for zombie children
+
         for (int i = 0; i < NPROC; i++) {
             if (procs[i].parent != p) continue;
             havekids = 1;
-            
+
             if (procs[i].state == ZOMBIE) {
-                // Found one
                 int pid = procs[i].pid;
                 if (status) {
                     *status = procs[i].exit_status;
                 }
-                // freeproc is called by scheduler, just mark it
-                procs[i].parent = 0;  // Allow scheduler to free
+                procs[i].parent = 0; // Allow scheduler to free
                 return pid;
             }
         }
-        
+
         if (!havekids) {
-            return -1;  // No children
+            return -1; // No children
         }
-        
-        // Sleep until a child exits
+
         sleep(p);
     }
 }
 
-//bootstrap for first time proc is run
 static void kthread_trampoline() {
 
     void (*func)(void) = curr->start;
     sstatus_enable_sie();
     func();
-    
+
     proc_exit(0);
 
     panic("kthread_trampoline: returned from proc_exit\n");
@@ -559,15 +500,14 @@ static void user_trampoline() {
     w_sstatus(status);
 
     w_sepc(curr->uentry);
-    
+
     kprintf("user_trampoline: satp=%p uentry=%p usp=%p\n",
         (void*)read_csr(satp), (void*)curr->uentry, (void*)curr->usp);
 
-    //siwtch to user stack 
     asm volatile(
         "mv sp, %0\n"
         "sret\n"
-        : 
+        :
         : "r"(curr->usp)
         : "memory"
     );
@@ -620,11 +560,11 @@ int sched_create_kthread(void (*func)(void)) {
 
         if (procs[i].state == UNUSED) {
 
-            void * stack_base = kalloc();
+            void * stack_base = kstack_alloc();
             if(!stack_base) {
                 panic("sched create failed\n");
                 return -1;
-            }            
+            }
 
             procs[i].kstack_base = stack_base;
             procs[i].kstack_top = (uint64_t)stack_base + KSTACK_SIZE;
@@ -632,7 +572,6 @@ int sched_create_kthread(void (*func)(void)) {
             procs[i].chan = 0;
             procs[i].id = i;
             *(struct proc **) stack_base = &procs[i];
-            //kprintf("[proc %d] kstack_base=%p kstack_top=%p\n",i, procs[i].kstack_base, (void*)procs[i].kstack_top);
 
             procs[i].ctx.sp = procs[i].kstack_top;
             procs[i].ctx.ra = (uint64_t)kthread_trampoline;
@@ -660,16 +599,14 @@ static void do_yield(int restore_sie, int preempt) {
     if (restore_sie) sstatus_enable_sie();
 }
 
-
 void yield() {
-
 
     int restore = (r_sstatus() & SSTATUS_SIE) != 0;
     do_yield(restore, need_switch);
 }
 
 void yield_from_trap(int preempt) {
-    int restore = (r_sstatus() & SSTATUS_SPIE) != 0; 
+    int restore = (r_sstatus() & SSTATUS_SPIE) != 0;
     do_yield(0, preempt);
 }
 
@@ -706,7 +643,7 @@ void wakeup(void * chan) {
         if(procs[i].state == SLEEPING && procs[i].chan == chan) {
             procs[i].state = RUNNABLE;
             procs[i].chan = 0;
-            
+
             trace_log(TR_WAKEUP, 0, &procs[i], 0);
 
             procs[i].st.wakeups++;
@@ -717,7 +654,6 @@ void wakeup(void * chan) {
     if(wasinterrupton) sstatus_enable_sie();
 }
 
-//Round robin for now
 void scheduler() {
 
     static struct proc * last = 0;
@@ -729,7 +665,6 @@ void scheduler() {
         for(int i = 0; i < NPROC; ++i) {
 
             if (procs[i].state != RUNNABLE) continue;
-            kprintf("sched: run pid=%d user=%d\n", procs[i].id, procs[i].user);
             ran = 1;
             curr = &procs[i];
             curr->state = RUNNING;
@@ -746,19 +681,15 @@ void scheduler() {
             }
 
             vm_switch(kvmpagetable());
-            //write_csr(sscratch, curr->kstack_top);
 
             in_scheduler = 0;
-            //sstatus_enable_sie();
             swtch(&scheduler_context, &curr->ctx);
-            //sstatus_disable_sie();
             in_scheduler = 1;
-            
-            if(curr && curr->state == ZOMBIE) {
+
+            if (curr && curr->state == ZOMBIE && curr->parent == 0) {
                 freeproc(curr);
             }
-            
-            //after it yeilds 
+
             curr = 0;
         }
 
@@ -791,18 +722,15 @@ void sched_tick() {
     need_switch = 1;
 }
 
-
-
 int sched_trace_dump_n(int max) {
     uint32_t end;
 
-    // snapshot writer position with interrupts off
     int wason = (r_sstatus() & SSTATUS_SIE) != 0;
     sstatus_disable_sie();
     end = trace_w;
     if (wason) sstatus_enable_sie();
 
-    uint32_t avail = end - trace_r;   
+    uint32_t avail = end - trace_r;
     if (avail > TRACE_N) {
         uint32_t drop = avail - TRACE_N;
         trace_r = end - TRACE_N;
@@ -836,7 +764,7 @@ int sched_trace_dump_n(int max) {
         if (wason2) sstatus_enable_sie();
 
         char f = tag_pid(e.from_id, e.from_user);
-        char t = tag_pid(e.to_id,   e.to_user);
+        char t = tag_pid(e.to_id, e.to_user);
 
         switch (e.type) {
             case TR_PICK:
@@ -876,14 +804,12 @@ int sched_trace_dump_n(int max) {
     return n;
 }
 
-
-
 void sched_trace_dump(void) {
     uint32_t end;
 
     int wason = (r_sstatus() & SSTATUS_SIE) != 0;
     sstatus_disable_sie();
-    end = trace_w;      
+    end = trace_w;
     if (wason) sstatus_enable_sie();
 
     while (1) {
@@ -903,7 +829,7 @@ void sched_trace_dump(void) {
         if (empty) break;
 
         char f = tag_pid(e.from_id, e.from_user);
-        char t = tag_pid(e.to_id,   e.to_user);
+        char t = tag_pid(e.to_id, e.to_user);
 
         switch (e.type) {
             case TR_PICK:
@@ -936,7 +862,7 @@ void sched_trace_dump(void) {
         }
     }
 }
-	
+
 void sched_dump() {
 
     kprintf("CSV\n");
@@ -993,46 +919,37 @@ int sched_create_userproc(const void * code, uint64_t sz) {
 
         if (procs[i].state == UNUSED) {
 
-            //kprintf("Checkpoint A\n");
-
-            void * stack_base = kalloc();
+            void * stack_base = kstack_alloc();
             if(!stack_base) {
                 panic("sched create userproc failed\n");
                 return -1;
-            }       
-            //kprintf("Checkpoint A2\n");
-     
+            }
 
             procs[i].kstack_base = stack_base;
             procs[i].kstack_top = (uint64_t)stack_base + KSTACK_SIZE;
             procs[i].id = i;
             *(struct proc **) stack_base = &procs[i];
 
-            //kprintf("[proc %d] kstack_base=%p kstack_top=%p\n", i, procs[i].kstack_base, (void*)procs[i].kstack_top);
-
             pagetable_t pt = uvmcreate();
             if(!pt) {
-                kfree(stack_base);
+                kfree_n(stack_base, KSTACKS);
                 return -1;
             }
 
             procs[i].tf = (struct trapframe *)kalloc();
             if(!procs[i].tf) {
-                kfree(stack_base);
+                kfree_n(stack_base, KSTACKS);
                 kfree((void*)pt);
                 return -1;
             }
             memzero(procs[i].tf, PGSIZE);
-            
+
             if(vm_map(pt, TRAPFRAME, (uint64_t)procs[i].tf, PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
-                kfree(stack_base);
+                kfree_n(stack_base, KSTACKS);
                 kfree((void*)pt);
                 kfree((void*)procs[i].tf);
                 return -1;
             }
-            
-
-           //kprintf("Checkpoint B\n");
 
             void * ustack = kalloc();
             if(!ustack) {
@@ -1040,18 +957,18 @@ int sched_create_userproc(const void * code, uint64_t sz) {
                 kfree((void*)pt);
                 kfree((void*)procs[i].tf);
                 if(ustack) kfree(ustack);
-                kfree(stack_base);
+                kfree_n(stack_base, KSTACKS);
                 return -1;
             }
-            
+
             memzero(ustack, PGSIZE);
 
             if(vm_map(pt, USER_STACK_BASE, (uint64_t)ustack, PGSIZE, PTE_R | PTE_W | PTE_U | PTE_A | PTE_D) < 0) {
-                
+
                 kfree(ustack);
                 pt_freewalk(pt);
                 kfree((void*)procs[i].tf);
-                kfree(stack_base);
+                kfree_n(stack_base, KSTACKS);
                 kfree((void*)pt);
                 procs[i].tf = 0;
                 return -1;
@@ -1067,38 +984,31 @@ int sched_create_userproc(const void * code, uint64_t sz) {
             }
             if(ok < 0) {
                 pt_freewalk(pt);
-                kfree(stack_base);
+                kfree_n(stack_base, KSTACKS);
                 kfree((void*)pt);
                 kfree((void*)procs[i].tf);
                 return -1;
-            }   
-            
+            }
+
             procs[i].tf->epc = entry;
-            procs[i].tf->sp  = USER_STACK_TOP;
-            
+            procs[i].tf->sp = USER_STACK_TOP;
+
             procs[i].pagetable = pt;
             procs[i].user = 1;
             procs[i].uentry = entry;
             procs[i].usp = USER_STACK_TOP;
 
             procs[i].ctx.sp = procs[i].kstack_top;
-            procs[i].ctx.ra = (uint64_t)firstrun;   
+            procs[i].ctx.ra = (uint64_t)firstrun;
 
-            // Initialize file descriptors (stdin/stdout/stderr to console)
             proc_fdinit(&procs[i]);
 
             procs[i].state = RUNNABLE;
-                
 
-           // kprintf("Checkpoint C\n");
-
-            dump_pte(pt, USER_TEXT_VA);
-            dump_pte(pt, USER_STACK_BASE);
-           
             return 0;
         }
-    }   
-    
+    }
+
     return -1;
 }
 
@@ -1123,14 +1033,14 @@ int proc_exec(struct proc * p, const uint8_t * code, uint64_t sz) {
     memzero(ustack, PGSIZE);
 
     if(vm_map(newpt, USER_STACK_BASE, (uint64_t)ustack, PGSIZE, PTE_R | PTE_W | PTE_U | PTE_A | PTE_D) < 0) {
-        //kfree(ustack);
+        kfree(ustack);
         pt_freewalk(newpt);
         kfree((void*)newpt);
         return -1;
     }
 
     uint64_t entry = 0;
-    int ok  = 0;
+    int ok = 0;
     if(sz >= 4 && code[0] == 0x7F && code[1] == 'E' && code[2] == 'L' && code[3] == 'F') {
         ok = load_elf(newpt, (uint8_t*)code, sz, &entry);
     }
@@ -1139,11 +1049,13 @@ int proc_exec(struct proc * p, const uint8_t * code, uint64_t sz) {
     }
 
     if(ok < 0) {
-        //kfree(ustack);
+        kfree(ustack);
         pt_freewalk(newpt);
         kfree((void*)newpt);
         return -1;
     }
+
+    kprintf("proc_exec: pid=%d entry=%p sz=%u\n", p->id, (void*)entry, (unsigned)sz);
 
     pagetable_t oldpt = p->pagetable;
     p->pagetable = newpt;
@@ -1151,9 +1063,9 @@ int proc_exec(struct proc * p, const uint8_t * code, uint64_t sz) {
     p->uentry = entry;
     p->usp = USER_STACK_TOP;
     p->tf->epc = entry;
-    p->tf->sp  = USER_STACK_TOP;
+    p->tf->sp = USER_STACK_TOP;
 
-    if(oldpt) {
+    if (oldpt) {
         pt_freewalk(oldpt);
         kfree((void*)oldpt);
     }
@@ -1161,7 +1073,7 @@ int proc_exec(struct proc * p, const uint8_t * code, uint64_t sz) {
 }
 
 void sched_trace_syscall(uint64_t num, uint64_t arg) {
-    
+
     struct proc * p = getmyproc();
     if(!p) return;
     uint32_t x = ((uint32_t)num << 16) | (uint32_t)(arg & 0xFFFF);
@@ -1178,11 +1090,10 @@ void sched_trace_state(uint32_t *r, uint32_t *w) {
     if (wason) sstatus_enable_sie();
 }
 
-// Allocate a file descriptor for the current process
 int fdalloc(struct file *f) {
     struct proc *p = getmyproc();
     if (!p) return -1;
-    
+
     for (int fd = 0; fd < NOFILE; fd++) {
         if (p->ofile[fd] == 0) {
             p->ofile[fd] = f;
@@ -1192,14 +1103,11 @@ int fdalloc(struct file *f) {
     return -1;
 }
 
-// Initialize file descriptors for a process (set up console on 0/1/2)
 void proc_fdinit(struct proc *p) {
-    // Clear all FDs
     for (int i = 0; i < NOFILE; i++) {
         p->ofile[i] = 0;
     }
-    
-    // Allocate stdin (fd 0) - readable console
+
     struct file *f0 = filealloc();
     if (f0) {
         f0->type = FD_DEVICE;
@@ -1209,8 +1117,7 @@ void proc_fdinit(struct proc *p) {
         f0->writable = 0;
         p->ofile[0] = f0;
     }
-    
-    // Allocate stdout (fd 1) - writable console
+
     struct file *f1 = filealloc();
     if (f1) {
         f1->type = FD_DEVICE;
@@ -1220,8 +1127,7 @@ void proc_fdinit(struct proc *p) {
         f1->writable = 1;
         p->ofile[1] = f1;
     }
-    
-    // Allocate stderr (fd 2) - writable console
+
     struct file *f2 = filealloc();
     if (f2) {
         f2->type = FD_DEVICE;
@@ -1231,8 +1137,7 @@ void proc_fdinit(struct proc *p) {
         f2->writable = 1;
         p->ofile[2] = f2;
     }
-    
-    // Set cwd to root directory
+
     p->cwd = namei("/");
     p->tree_cwd = 1;
     p->subvol_id = 1;

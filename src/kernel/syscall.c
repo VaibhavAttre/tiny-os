@@ -18,7 +18,6 @@
 #include <stdint.h>
 #include "user_test.h"
 
-// Temporary buffer for copying between user/kernel space
 #define COPYBUF_SIZE 512
 static char copybuf[COPYBUF_SIZE];
 
@@ -40,12 +39,8 @@ void syscall_handler(struct trapframe * tf) {
 
     if(syscall_num != SYSCALL_PUTC) {
 
-        //uint32_t x = ((uint32_t)syscall_num << 16) | (uint32_t)(tf->a0 & 0xFFFF);
-        //trace_log(TR_SYSCALL, myproc(), 0, x);
         sched_trace_syscall(syscall_num, tf->a0);
     }
-
-    //kprintf("syscall num=%d\n", (int)syscall_num);
 
     switch(syscall_num) {
 
@@ -90,73 +85,94 @@ void syscall_handler(struct trapframe * tf) {
         case SYSCALL_EXEC: {
             struct proc *p = myproc();
             uint64_t upath = tf->a0;
-            
-            // Copy path from userspace
+
             char path[128];
             if (copyinstr(p->pagetable, path, upath, sizeof(path)) < 0) {
+                kprintf("sys_exec: copyinstr failed pid=%d upath=%p\n",
+                        p ? p->id : -1, (void*)upath);
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
-            // Open the executable file
+            kprintf("sys_exec: pid=%d path='%s'\n", p ? p->id : -1, path);
+
+            fs_tree_init();
+            uint32_t ino = 0;
+            uint16_t type = 0;
+            uint64_t size = 0;
+            const uint32_t exec_max_pages = 64;
+            const uint64_t exec_max_bytes = (uint64_t)exec_max_pages * PGSIZE;
+            int use_tree = (fs_tree_lookup_path_at(p->tree_cwd, path, &ino) == 0);
+            if (use_tree) {
+                if (fs_tree_get_inode(ino, &type, &size) < 0 || type != T_FILE) {
+                    tf->a0 = (uint64_t)-1;
+                    break;
+                }
+                if (size == 0 || size > exec_max_bytes) {
+                    tf->a0 = (uint64_t)-1;
+                    break;
+                }
+                uint32_t npages = (uint32_t)((size + PGSIZE - 1) / PGSIZE);
+                uint8_t *buf = (uint8_t *)kalloc_n(npages);
+                if (!buf) {
+                    tf->a0 = (uint64_t)-1;
+                    break;
+                }
+                int n = fs_tree_file_read(ino, 0, buf, (uint32_t)size);
+                if (n != (int)size) {
+                    kfree_n(buf, npages);
+                    kprintf("sys_exec: read failed n=%d size=%u\n", n, (unsigned)size);
+                    tf->a0 = (uint64_t)-1;
+                    break;
+                }
+                int r = proc_exec(p, buf, (uint64_t)size);
+                kfree_n(buf, npages);
+                kprintf("sys_exec: proc_exec r=%d\n", r);
+                tf->a0 = (r < 0) ? (uint64_t)-1 : 0;
+                break;
+            }
+
             struct inode *ip = namei(path);
             if (ip == 0) {
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
+
             ilock(ip);
-            
-            // Must be a regular file
             if (ip->type != T_FILE) {
                 iunlock(ip);
                 iput(ip);
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
-            // Read the entire file into a buffer
+
             uint32_t sz = ip->size;
-            if (sz == 0 || sz > 64 * 1024) {  // Limit to 64KB
+            if (sz == 0 || sz > exec_max_bytes) {
                 iunlock(ip);
                 iput(ip);
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
-            // Allocate buffer for file contents
-            uint8_t *buf = (uint8_t*)kalloc();
+
+            uint32_t npages = (uint32_t)((sz + PGSIZE - 1) / PGSIZE);
+            uint8_t *buf = (uint8_t*)kalloc_n(npages);
             if (!buf) {
                 iunlock(ip);
                 iput(ip);
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
-            // For files larger than one page, need multiple pages
-            // For now, just support files up to 4KB
-            if (sz > PGSIZE) {
-                kfree(buf);
-                iunlock(ip);
-                iput(ip);
-                tf->a0 = (uint64_t)-1;
-                break;
-            }
-            
+
             int n = readi(ip, buf, 0, sz);
             iunlock(ip);
             iput(ip);
-            
             if (n != (int)sz) {
-                kfree(buf);
+                kfree_n(buf, npages);
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
-            // Execute it
+
             int r = proc_exec(p, buf, sz);
-            kfree(buf);
-            
+            kfree_n(buf, npages);
             tf->a0 = (r < 0) ? (uint64_t)-1 : 0;
             break;
         }
@@ -166,14 +182,12 @@ void syscall_handler(struct trapframe * tf) {
             int fd = (int)tf->a0;
             uint64_t uaddr = tf->a1;
             uint64_t n = tf->a2;
-            
-            // Validate FD
+
             if (fd < 0 || fd >= NOFILE || !p->ofile[fd]) {
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
-            // Read in chunks using copybuf
+
             int64_t total = 0;
             while (n > 0) {
                 uint64_t chunk = (n < COPYBUF_SIZE) ? n : COPYBUF_SIZE;
@@ -182,8 +196,8 @@ void syscall_handler(struct trapframe * tf) {
                     tf->a0 = (total > 0) ? (uint64_t)total : (uint64_t)-1;
                     break;
                 }
-                if (r == 0) break;  // EOF
-                
+                if (r == 0) break; // EOF
+
                 if (copyout(p->pagetable, uaddr, copybuf, (uint64_t)r) < 0) {
                     tf->a0 = (uint64_t)-1;
                     break;
@@ -191,7 +205,7 @@ void syscall_handler(struct trapframe * tf) {
                 total += r;
                 uaddr += (uint64_t)r;
                 n -= (uint64_t)r;
-                if (r < (int)chunk) break;  // Short read
+                if (r < (int)chunk) break; // Short read
             }
             tf->a0 = (uint64_t)total;
             break;
@@ -202,22 +216,22 @@ void syscall_handler(struct trapframe * tf) {
             int fd = (int)tf->a0;
             uint64_t uaddr = tf->a1;
             uint64_t n = tf->a2;
-            
-            // Validate FD
+
             if (fd < 0 || fd >= NOFILE || !p->ofile[fd]) {
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
-            // Write in chunks using copybuf
+
             int64_t total = 0;
             while (n > 0) {
                 uint64_t chunk = (n < COPYBUF_SIZE) ? n : COPYBUF_SIZE;
 
-                if (copyin(p->pagetable, copybuf, uaddr, chunk) < 0) {
-                    tf->a0 = (uint64_t)-1;
-                    break;
-                }
+            if (copyin(p->pagetable, copybuf, uaddr, chunk) < 0) {
+                kprintf("sys_write: copyin failed pid=%d uaddr=%p n=%ld\n",
+                        p ? p->id : -1, (void*)uaddr, (long)n);
+                tf->a0 = (uint64_t)-1;
+                break;
+            }
                 int r = filewrite(p->ofile[fd], copybuf, (int)chunk);
                 if (r < 0) {
                     tf->a0 = (total > 0) ? (uint64_t)total : (uint64_t)-1;
@@ -234,13 +248,12 @@ void syscall_handler(struct trapframe * tf) {
         case SYSCALL_CLOSE: {
             struct proc *p = myproc();
             int fd = (int)tf->a0;
-            
-            // Validate FD
+
             if (fd < 0 || fd >= NOFILE || !p->ofile[fd]) {
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
+
             fileclose(p->ofile[fd]);
             p->ofile[fd] = 0;
             tf->a0 = 0;
@@ -251,8 +264,7 @@ void syscall_handler(struct trapframe * tf) {
             struct proc *p = myproc();
             uint64_t upath = tf->a0;
             int flags = (int)tf->a1;
-            
-            // Copy path from userspace
+
             char path[128];
             if (copyinstr(p->pagetable, path, upath, sizeof(path)) < 0) {
                 tf->a0 = (uint64_t)-1;
@@ -311,11 +323,10 @@ void syscall_handler(struct trapframe * tf) {
         }
 
         case SYSCALL_CLONE: {
-            // clone(src_path, dst_path) - CoW clone a file (tree extents)
             struct proc *p = myproc();
             uint64_t usrc = tf->a0;
             uint64_t udst = tf->a1;
-            
+
             char src[128], dst[128];
             if (copyinstr(p->pagetable, src, usrc, sizeof(src)) < 0 ||
                 copyinstr(p->pagetable, dst, udst, sizeof(dst)) < 0) {
@@ -340,16 +351,15 @@ void syscall_handler(struct trapframe * tf) {
 
         case SYSCALL_WAIT: {
             struct proc *p = myproc();
-            uint64_t uaddr = tf->a0;  // User address for status, or 0
-            
+            uint64_t uaddr = tf->a0; // User address for status, or 0
+
             int status = 0;
             int pid = proc_wait(&status);
-            
+
             if (pid > 0 && uaddr != 0) {
-                // Copy status to user space
                 copyout(p->pagetable, uaddr, (char*)&status, sizeof(status));
             }
-            
+
             tf->a0 = (uint64_t)pid;
             break;
         }
@@ -358,7 +368,7 @@ void syscall_handler(struct trapframe * tf) {
             struct proc *p = myproc();
             uint64_t upath = tf->a0;
             (void)tf->a1;
-            
+
             char path[128];
             if (copyinstr(p->pagetable, path, upath, sizeof(path)) < 0) {
                 tf->a0 = (uint64_t)-1;
@@ -378,7 +388,7 @@ void syscall_handler(struct trapframe * tf) {
         case SYSCALL_CHDIR: {
             struct proc *p = myproc();
             uint64_t upath = tf->a0;
-            
+
             char path[128];
             if (copyinstr(p->pagetable, path, upath, sizeof(path)) < 0) {
                 tf->a0 = (uint64_t)-1;
@@ -403,7 +413,7 @@ void syscall_handler(struct trapframe * tf) {
             struct proc *p = myproc();
             uint64_t ubuf = tf->a0;
             uint64_t size = tf->a1;
-            
+
             if (size < 2) {
                 tf->a0 = (uint64_t)-1;
                 break;
@@ -468,7 +478,7 @@ void syscall_handler(struct trapframe * tf) {
             struct proc *p = myproc();
             uint64_t upath = tf->a0;
             (void)tf->a1;
-            
+
             char path[128];
             if (copyinstr(p->pagetable, path, upath, sizeof(path)) < 0) {
                 tf->a0 = (uint64_t)-1;
@@ -511,23 +521,22 @@ void syscall_handler(struct trapframe * tf) {
         case SYSCALL_FSTAT: {
             struct proc *p = myproc();
             int fd = (int)tf->a0;
-            uint64_t ust = tf->a1;  // User struct stat pointer
-            
+            uint64_t ust = tf->a1; // User struct stat pointer
+
             if (fd < 0 || fd >= NOFILE || !p->ofile[fd]) {
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
+
             struct file *f = p->ofile[fd];
-            
-            // Simple stat structure
+
             struct {
                 uint16_t type;
                 uint16_t nlink;
                 uint32_t size;
                 uint32_t ino;
             } st;
-            
+
             if (f->type == FD_INODE) {
                 ilock(f->ip);
                 st.type = f->ip->type;
@@ -547,7 +556,7 @@ void syscall_handler(struct trapframe * tf) {
                 st.size = (uint32_t)size;
                 st.ino = f->tree_ino;
             } else if (f->type == FD_DEVICE) {
-                st.type = 0;  // Special device
+                st.type = 0; // Special device
                 st.nlink = 1;
                 st.size = 0;
                 st.ino = 0;
@@ -555,12 +564,12 @@ void syscall_handler(struct trapframe * tf) {
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
+
             if (copyout(p->pagetable, ust, (char*)&st, sizeof(st)) < 0) {
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
+
             tf->a0 = 0;
             break;
         }
@@ -568,12 +577,12 @@ void syscall_handler(struct trapframe * tf) {
         case SYSCALL_DUP: {
             struct proc *p = myproc();
             int fd = (int)tf->a0;
-            
+
             if (fd < 0 || fd >= NOFILE || !p->ofile[fd]) {
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
+
             struct file *f = filedup(p->ofile[fd]);
             int newfd = fdalloc(f);
             if (newfd < 0) {
@@ -581,7 +590,7 @@ void syscall_handler(struct trapframe * tf) {
                 tf->a0 = (uint64_t)-1;
                 break;
             }
-            
+
             tf->a0 = (uint64_t)newfd;
             break;
         }
@@ -608,9 +617,15 @@ void syscall_handler(struct trapframe * tf) {
 
             fs_tree_init();
             uint32_t ino = 0;
-            if (fs_tree_lookup_path_at(p->tree_cwd, path, &ino) < 0) {
-                tf->a0 = (uint64_t)-1;
-                break;
+            if (path[0] == 0 || (path[0] == '.' && path[1] == 0)) {
+                ino = p->tree_cwd;
+            } else if (path[0] == '/' && path[1] == 0) {
+                ino = 1;
+            } else {
+                if (fs_tree_lookup_path_at(p->tree_cwd, path, &ino) < 0) {
+                    tf->a0 = (uint64_t)-1;
+                    break;
+                }
             }
 
             char name[32];

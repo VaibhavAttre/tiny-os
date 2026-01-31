@@ -1,8 +1,7 @@
 #pragma once
 #include <stdint.h>
 
-// Minimal FS tree items (prototype).
-#define FS_ITEM_INODE  1
+#define FS_ITEM_INODE 1
 #define FS_ITEM_DIRENT 2
 #define FS_ITEM_EXTENT 3
 #define FS_ITEM_PARENT 4

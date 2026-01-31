@@ -6,7 +6,6 @@ struct extent {
     uint32_t len;
 };
 
-// Extent allocator using the B-tree free-space map (prototype).
 void extent_init(void);
 int extent_alloc(uint32_t len, struct extent *out);
 int extent_alloc_meta(uint32_t len, struct extent *out);

@@ -265,11 +265,13 @@ Done when: reflink-copy is instant and modifying the clone doesn’t modify the 
 
 ### Phase 13 — Init & Shell
 
-- [ ] **Init Process**
+- [x] **Init Process**
   - First user process started by the kernel
-- [ ] **Simple Shell**
-  - Run basic user programs
-  - Provide a minimal interactive environment
+  - Runs user tests (`/bin/testC`–`/bin/testF`) then drops into the shell
+- [x] **Simple Shell**
+  - Run basic user programs (exec `/bin/<cmd>` or absolute paths)
+  - Built-ins: `help`, `pwd`, `cd`, `ls`, `mkdir`, `touch`, `cat`, `write`, `rm`, `mv`, `clone`, `snapshot`, `subvol`, `exec`, `exit`
+  - Shows current working directory in the prompt
 
 ---
 
@@ -348,7 +350,12 @@ If the goal is to finish the filesystem as described in Phases 8-12, the most pr
 ## Running 
 
 ```bash
-
+make cleanall
 make all
-qemu-system-riscv64 -machine virt -kernel kernel.elf -nographic
+make disk.img
+make run
 ```
+
+Notes:
+- `make disk.img` formats a fresh filesystem image.
+- On boot, the init process runs `/bin/testC`–`/bin/testF` and then starts the shell.

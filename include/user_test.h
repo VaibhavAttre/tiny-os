@@ -2,16 +2,22 @@
 #include <stdint.h>
 
 extern unsigned char userA_elf[];
-extern unsigned int  userA_elf_len;
+extern unsigned int userA_elf_len;
 
 extern unsigned char userB_elf[];
-extern unsigned int  userB_elf_len;
+extern unsigned int userB_elf_len;
 
 extern unsigned char userC_elf[];
-extern unsigned int  userC_elf_len;
+extern unsigned int userC_elf_len;
 
 extern unsigned char userD_elf[];
-extern unsigned int  userD_elf_len;
+extern unsigned int userD_elf_len;
 
 extern unsigned char userE_elf[];
-extern unsigned int  userE_elf_len;
+extern unsigned int userE_elf_len;
+
+extern unsigned char userF_elf[];
+extern unsigned int userF_elf_len;
+
+extern unsigned char userInit_elf[];
+extern unsigned int userInit_elf_len;
