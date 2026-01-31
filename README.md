@@ -207,10 +207,6 @@ Goal: represent a real filesystem using **multiple trees** (minimum viable set).
   - File extent items (file offset → extent)
 - [x] **Extent Tree**
   - Extent refs + allocation bookkeeping
-- [ ] **Checksum Tree (optional initially)**
-  - Store checksums for data extents (metadata checksums remain mandatory)
-
-Done when: you can `mkdir`, create, path-lookup, and list directories entirely from disk-backed metadata.
 
 ---
 
@@ -228,10 +224,6 @@ Goal: make user programs actually read/write **disk-backed files**.
   - `mkdir`, `unlink`, `fstat`, `chdir`, `getcwd`, `dup`
   - `clone` (reflink) syscall
 
-Note: tree-based syscalls are now the default; the inode-based path remains as legacy.
-
-Done when: a user program can create a file, write it, reboot, read it back, and pass stress tests.
-
 ---
 
 ### Phase 12 — Snapshots + Reflinks (Modern CoW Features)
@@ -247,7 +239,6 @@ Goal: the features that differentiate CoW B-tree systems (APFS/Btrfs/ZFS-style).
   - Clone file extents without copying data
   - Break sharing on write
 
-Done when: reflink-copy is instant and modifying the clone doesn’t modify the original.
 
 ---
 
@@ -275,13 +266,6 @@ Done when: reflink-copy is instant and modifying the clone doesn’t modify the 
 
 ---
 
-### Phase 14 — Heap
-
-- [ ] **Custom Malloc + SBRK and heap management**
-  - Allow users to access the heap and use malloc, free, etc. 
-
----
-
 ## Future Directions
 
 This is my **first OS project**, so I’m deliberately starting simple:
@@ -300,9 +284,7 @@ This is my **first OS project**, so I’m deliberately starting simple:
   Implement low-level optimizations such as buddy allocators
 ---
 
-## Next Best Path (to reach the CoW B-tree design)
-
-If the goal is to finish the filesystem as described in Phases 8-12, the most productive path is:
+## Next Best Path 
 
 1) **Finish inode lifecycle + truncation**
    - Implement `itrunc()` to drop blocks safely (respecting CoW refcounts).
