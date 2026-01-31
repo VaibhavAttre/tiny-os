@@ -5,16 +5,16 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#define BSIZE       1024
+#define BSIZE 1024
 #define FS_MAGIC    0x434F5746  // "COWF"
-#define NSUPER      2
+#define NSUPER 2
 
-#define T_UNUSED    0
-#define T_DIR       1
-#define T_FILE      2
+#define T_UNUSED 0
+#define T_DIR 1
+#define T_FILE 2
 
-#define NDIRECT     12
-#define NINDIRECT   (BSIZE / sizeof(uint32_t))
+#define NDIRECT 12
+#define NINDIRECT (BSIZE / sizeof(uint32_t))
 
 #define DIRENT_NAMELEN 28
 
@@ -73,7 +73,7 @@ static uint32_t sb_checksum(const struct superblock *sbp) {
     tmp.reserved = 0;
 
     const uint8_t *p = (const uint8_t *)&tmp;
-    uint32_t hash = 2166136261u;  // FNV-1a
+    uint32_t hash = 2166136261u; // FNV-1a
     for (uint32_t i = 0; i < sizeof(tmp); i++) {
         hash ^= p[i];
         hash *= 16777619u;
@@ -177,7 +177,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Read bitmap blocks.
     for (uint32_t b = 0; b < sb.nblocks; b += BSIZE * 8) {
         uint32_t bmap_block = bitmap_start + b / (BSIZE * 8);
         rsect(bmap_block, block);
@@ -189,7 +188,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Read refcount blocks.
     for (uint32_t b = 0; b < sb.nblocks; b += REFCNTS_PER_BLOCK) {
         uint32_t ref_block = refcnt_start + (b / REFCNTS_PER_BLOCK);
         rsect(ref_block, block);
@@ -200,7 +198,6 @@ int main(int argc, char *argv[]) {
 
     int errors = 0;
 
-    // Reserved blocks should be marked used.
     for (uint32_t b = 0; b < sb.data_start; b++) {
         if (!bitmap[b]) {
             fprintf(stderr, "fsck: metadata block %u not marked allocated\n", b);
@@ -208,7 +205,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Scan inodes and collect block references.
     for (uint32_t inum = 1; inum < sb.ninodes; inum++) {
         struct dinode din;
         read_inode(&sb, inum, &din);
@@ -274,7 +270,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Verify refcounts for data blocks.
     for (uint32_t b = sb.data_start; b < sb.nblocks; b++) {
         if (refcnt_calc[b] > 255) {
             fprintf(stderr, "fsck: block %u refcount overflow (%u)\n",
@@ -288,7 +283,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Basic root directory sanity check.
     struct dinode root;
     read_inode(&sb, sb.root_ino, &root);
     if (check_root_dir(&sb, &root) < 0) {

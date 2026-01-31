@@ -2,6 +2,7 @@
 #include "timer.h"
 #include "kernel/printf.h"
 #include "kernel/sched.h"
+#include "kernel/current.h"
 
 void clockinterrupt() {
 

@@ -3,13 +3,12 @@
 
 struct trapframe;
 
-// Open flags
-#define O_RDONLY  0x000
-#define O_WRONLY  0x001
-#define O_RDWR    0x002
-#define O_CREATE  0x200
-#define O_TRUNC   0x400
-#define O_TREE    0x800
+#define O_RDONLY 0x000
+#define O_WRONLY 0x001
+#define O_RDWR 0x002
+#define O_CREATE 0x200
+#define O_TRUNC 0x400
+#define O_TREE 0x800
 
 enum {
     SYSCALL_PUTC = 1,
@@ -23,7 +22,7 @@ enum {
     SYSCALL_WRITE = 9,
     SYSCALL_CLOSE = 10,
     SYSCALL_OPEN = 11,
-    SYSCALL_CLONE = 12,  // CoW clone (reflink)
+    SYSCALL_CLONE = 12, // CoW clone (reflink)
     SYSCALL_FORK = 13,
     SYSCALL_WAIT = 14,
     SYSCALL_MKDIR = 15,
@@ -33,6 +32,10 @@ enum {
     SYSCALL_FSTAT = 19,
     SYSCALL_DUP = 20,
     SYSCALL_TRUNCATE = 21,
+    SYSCALL_READDIR = 22,
+    SYSCALL_RENAME = 23,
+    SYSCALL_SNAPSHOT = 24,
+    SYSCALL_SUBVOL_SET = 25,
 };
 
 void syscall_handler(struct trapframe * tf);

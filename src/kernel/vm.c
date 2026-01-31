@@ -38,11 +38,10 @@ static void trampoline_validation() {
     }
 }
 
-//3 depth tree tyle page table walk
 static pte_t * walk(pagetable_t pt, uint64_t va, int alloc) {
 
     for(int level =2; level > 0; level--) {
-        
+
         pte_t * pte = &pt[PX(level, va)]; //extract virt PN index for given level
         if(*pte & PTE_V) {
             pt = (pagetable_t)PTE2PA(*pte);
@@ -59,11 +58,10 @@ static pte_t * walk(pagetable_t pt, uint64_t va, int alloc) {
     return &pt[PX(0, va)]; //final actual page
 }
 
-
 static int mappages(pagetable_t pt, uint64_t va, uint64_t pa, uint64_t sz, uint64_t bitfield) {
 
     if(sz == 0) return 0;
-    
+
     uint64_t a = PGRDOWN(va);
     uint64_t b = PGRDOWN(va + sz - 1);
 
@@ -84,7 +82,6 @@ static void kmap_range(uint64_t a, uint64_t b, uint64_t perm) {
     a = PGRDOWN(a);
     b = PGRUP(b);
     if (b <= a) return;
-    //dir map for now
     if(mappages(kpt, a, a, b- a, perm) < 0) panic("kvminit");
 }
 
@@ -93,13 +90,9 @@ static int map_range(pagetable_t pt, uint64_t a, uint64_t b, uint64_t perm) {
     a = PGRDOWN(a);
     b = PGRUP(b);
     if (b <= a) return 0;
-    //dir map for now
     return mappages(pt, a, a, b - a, perm);
 }
 
-/*
-DEBUG FUNC
-*/
 void dump_pte(pagetable_t pt, uint64_t va) {
     pte_t *pte = walk(pt, va, 0);
     if (!pte) { kprintf("va %p: no pte\n", (void*)va); return; }
@@ -110,6 +103,9 @@ void dump_pte(pagetable_t pt, uint64_t va) {
             (void*)(*pte & 0x3FF));
 }
 
+pte_t *walkpte(pagetable_t pt, uint64_t va) {
+    return walk(pt, va, 0);
+}
 
 void kvminit(void) {
 
@@ -124,59 +120,45 @@ void kvminit(void) {
     kmap_range((uint64_t)__data_start, (uint64_t)__data_end, PTE_R|PTE_W|PTE_A|PTE_D);
     kmap_range((uint64_t)__bss_start, (uint64_t)__bss_end, PTE_R|PTE_W|PTE_A|PTE_D);
     kmap_range((uint64_t)__stack_bottom, (uint64_t)__stack_top, PTE_R|PTE_W|PTE_A|PTE_D);
-    
+
     if(mappages(kpt, TRAMPOLINE, (uint64_t)trampoline, PGSIZE, PTE_R | PTE_X | PTE_A) < 0) {
         panic("kvminit trampoline");
     }
 
-    //kprintf("reached A");
-    //unused as RW (such as heap)
     uint64_t start = PGRUP((uint64_t)_end);
     uint64_t end = RAM_BASE + RAM_SIZE;
     if(start < end) {
         kmap_range(start, end, PTE_R|PTE_W|PTE_A|PTE_D);
     }
 
-    //kprintf("reached B");
-    //UART
     kmap_range(0x10000000UL, 0x10000000UL + PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
-    
-    // VirtIO MMIO (8 devices at 0x10001000 - 0x10008000)
+
     for (uint64_t addr = 0x10001000UL; addr < 0x10009000UL; addr += PGSIZE) {
         kmap_range(addr, addr + PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D);
     }
-    
-    //DEBUG
+
     dump_pte(kpt, (uint64_t)__text_start);
     dump_pte(kpt, (uint64_t)__rodata_start);
     dump_pte(kpt, (uint64_t)__data_start);
     dump_pte(kpt, 0x10000000UL);
-    dump_pte(kpt, 0x0);  
+    dump_pte(kpt, 0x0);
 }
 
-//installing kernel page table
 void kvmenable(void) {
 
-    //kprintf("Reached C");
     sfence_vma();
-    
-    //kprintf("Reached D");
+
     w_satp(MAKE_SATP((uint64_t)kpt));
-    
-    //kprintf("Reached E");
+
     sfence_vma();
 }
 
-//user vm page table switch func
 void vm_switch(pagetable_t pt) {
 
-    //kprintf("Reached C");
     sfence_vma();
-    
-    //kprintf("Reached D");
+
     w_satp(MAKE_SATP((uint64_t)pt));
-    
-    //kprintf("Reached E");
+
     sfence_vma();
 }
 
@@ -191,65 +173,50 @@ pagetable_t uvmcreate(void) {
     pagetable_t pt = (pagetable_t)kalloc();
     if(!pt) return 0;
     memzero(pt, PGSIZE);
-    
+
     uint64_t start = (uint64_t)__text_start;
     uint64_t end = (uint64_t)__text_end;
     if(map_range(pt, start, end, PTE_R | PTE_X | PTE_A) < 0) {
         kfree((void*)pt);
         return 0;
     }
-        
+
     start = (uint64_t)__rodata_start;
     end = (uint64_t)__rodata_end;
     if(map_range(pt, start, end, PTE_R | PTE_A) < 0) {
         kfree((void*)pt);
         return 0;
-    }   
-
-    //kprintf("REACHED UVMCREATE 2\n");
+    }
 
     start = (uint64_t)__data_start;
     end = (uint64_t)__data_end;
     if(map_range(pt, start, end, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
         kfree((void*)pt);
         return 0;
-    } 
-    
-    //kprintf("REACHED UVMCREATE\n");
-    
+    }
+
     start = (uint64_t)__bss_start;
     end = (uint64_t)__bss_end;
     if(map_range(pt, start, end, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
         kfree((void*)pt);
         return 0;
-    } 
+    }
 
     start = (uint64_t)__stack_bottom;
     end = (uint64_t)__stack_top;
     if(map_range(pt, start, end, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
         kfree((void*)pt);
         return 0;
-    } 
+    }
 
     if (mappages(pt, TRAMPOLINE, (uint64_t)trampoline, PGSIZE, PTE_R|PTE_X|PTE_A) < 0) {
         kfree((void*)pt);
         return 0;
     }
 
-
-    /*
-    uint64_t heap_start = PGRUP((uint64_t)_end);
-    uint64_t heap_end = RAM_BASE + RAM_SIZE;
-    if(heap_start < heap_end) {
-        if(mappages(pt, heap_start, heap_start, heap_end - heap_start, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
-            kfree((void*)pt);
-            return 0;   
-        }
-    }*/
-
     if(map_range(pt, 0x10000000UL, 0x10000000UL + PGSIZE, PTE_R | PTE_W | PTE_A | PTE_D) < 0) {
         kfree((void*)pt);
-        return 0;   
+        return 0;
     }
 
     return pt;
@@ -259,33 +226,29 @@ int vm_map(pagetable_t pt, uint64_t va, uint64_t pa, uint64_t size, int perm) {
     return mappages(pt, va, pa, size, perm);
 }
 
-// Walk page table and return the physical address for a user virtual address.
-// Returns 0 if not mapped or not accessible with required permissions.
 static uint64_t walkaddr(pagetable_t pt, uint64_t va, int check_user) {
     if (va >= MAXVA) return 0;
-    
+
     pte_t *pte = walk(pt, va, 0);
     if (!pte) return 0;
     if ((*pte & PTE_V) == 0) return 0;
     if (check_user && (*pte & PTE_U) == 0) return 0;
-    
+
     return PTE2PA(*pte);
 }
 
-// Copy from user virtual address to kernel buffer.
-// Returns 0 on success, -1 on error (bad address).
 int copyin(pagetable_t pt, char *dst, uint64_t srcva, uint64_t len) {
     while (len > 0) {
         uint64_t va0 = PGRDOWN(srcva);
         uint64_t pa = walkaddr(pt, va0, 1);
         if (pa == 0) return -1;
-        
+
         uint64_t off = srcva - va0;
         uint64_t n = PGSIZE - off;
         if (n > len) n = len;
-        
+
         memcopy(dst, (char*)(pa + off), n);
-        
+
         len -= n;
         dst += n;
         srcva = va0 + PGSIZE;
@@ -293,20 +256,18 @@ int copyin(pagetable_t pt, char *dst, uint64_t srcva, uint64_t len) {
     return 0;
 }
 
-// Copy from kernel buffer to user virtual address.
-// Returns 0 on success, -1 on error (bad address).
 int copyout(pagetable_t pt, uint64_t dstva, char *src, uint64_t len) {
     while (len > 0) {
         uint64_t va0 = PGRDOWN(dstva);
         uint64_t pa = walkaddr(pt, va0, 1);
         if (pa == 0) return -1;
-        
+
         uint64_t off = dstva - va0;
         uint64_t n = PGSIZE - off;
         if (n > len) n = len;
-        
+
         memcopy((char*)(pa + off), src, n);
-        
+
         len -= n;
         src += n;
         dstva = va0 + PGSIZE;
@@ -314,20 +275,18 @@ int copyout(pagetable_t pt, uint64_t dstva, char *src, uint64_t len) {
     return 0;
 }
 
-// Copy a null-terminated string from user to kernel.
-// Returns 0 on success, -1 on error (bad address or string too long).
 int copyinstr(pagetable_t pt, char *dst, uint64_t srcva, uint64_t max) {
     int got_null = 0;
-    
+
     while (!got_null && max > 0) {
         uint64_t va0 = PGRDOWN(srcva);
         uint64_t pa = walkaddr(pt, va0, 1);
         if (pa == 0) return -1;
-        
+
         uint64_t off = srcva - va0;
         uint64_t n = PGSIZE - off;
         if (n > max) n = max;
-        
+
         char *p = (char*)(pa + off);
         for (uint64_t i = 0; i < n; i++) {
             *dst = *p;
@@ -339,10 +298,10 @@ int copyinstr(pagetable_t pt, char *dst, uint64_t srcva, uint64_t max) {
             p++;
             max--;
         }
-        
+
         srcva = va0 + PGSIZE;
     }
-    
+
     if (!got_null) return -1;
     return 0;
 }

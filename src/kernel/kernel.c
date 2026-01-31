@@ -1,4 +1,3 @@
-// kernel.c
 #include <stdint.h>
 #include <drivers/uart.h>
 #include <drivers/virtio.h>
@@ -19,9 +18,9 @@
 #include "kernel/file.h"
 #include "user_test.h"
 
-extern volatile uint64_t ticks;  
+extern volatile uint64_t ticks;
 #define RUN_FOR_TICKS 50000
-static volatile uint64_t sink = 0; 
+static volatile uint64_t sink = 0;
 #define DUMP_EVERY 200
 
 static inline void do_ecall_putc(char c) {
@@ -37,10 +36,8 @@ static void thread_ecall_test(void) {
     }
 }
 
-
 void test_vm() {
-    
-    /*Simple VM tests*/
+
     uint64_t satp = read_csr(satp);
     kprintf("satp=%p mode=%d\n", (void*)satp, (int)(satp >> 60));
     if ((satp >> 60) != 8) { kprintf("ERROR: not Sv39\n"); while(1){} }
@@ -67,7 +64,6 @@ static inline uint64_t rdcycle64() {
     return x;
 }
 
-//found online: xorshift64
 static inline uint64_t rng_next(uint64_t *seed) {
 
     uint64_t x = *seed;
@@ -101,8 +97,6 @@ static void run_for_ticks(uint64_t *s, uint64_t t) {
     }
 }
 
-// worker threads
-
 static void thread_batch0(void) {
     uint64_t s = 0xBEEF0000ULL ^ rdcycle64();
     for (;;) {
@@ -123,7 +117,6 @@ static void thread_interactive0(void) {
     uint64_t s = 0x1A0D0ULL ^ rdcycle64();
     for (;;) {
         run_for_ticks(&s, rng_range(&s, 1, 8));
-        //sleep_ticks(rng_range(&s, 5, 60));
     }
 }
 
@@ -131,7 +124,6 @@ static void thread_interactive1(void) {
     uint64_t s = 0x1A0D1ULL ^ (rdcycle64() + 123);
     for (;;) {
         run_for_ticks(&s, rng_range(&s, 1, 8));
-        //sleep_ticks(rng_range(&s, 5, 60));
     }
 }
 
@@ -139,7 +131,6 @@ static void thread_interactive2(void) {
     uint64_t s = 0x1A0D2ULL ^ (rdcycle64() + 456);
     for (;;) {
         run_for_ticks(&s, rng_range(&s, 1, 8));
-        //sleep_ticks(rng_range(&s, 5, 60));
     }
 }
 
@@ -147,7 +138,6 @@ static void thread_interactive3(void) {
     uint64_t s = 0x1A0D3ULL ^ (rdcycle64() + 789);
     for (;;) {
         run_for_ticks(&s, rng_range(&s, 1, 8));
-        //sleep_ticks(rng_range(&s, 5, 60));
     }
 }
 
@@ -155,22 +145,18 @@ static void thread_io(void) {
     uint64_t s = 0x1010ULL ^ (rdcycle64() << 2);
     for (;;) {
         run_for_ticks(&s, rng_range(&s, 1, 2));
-        //sleep_ticks(rng_range(&s, 20, 200));
     }
 }
 
-// 1× stats: periodic snapshots + final dump
 static void thread_stats(void) {
     uint64_t next = DUMP_EVERY;
-    
 
     while (ticks < RUN_FOR_TICKS) {
-        
+
         if (ticks < next) {
             sleep_ticks(next - ticks);
         }
 
-        
         kprintf("SNAPSHOT,tick=%d\n", (int)ticks);
         sched_dump();
 
@@ -186,17 +172,15 @@ static void stress_test_threads() {
 
     if (sched_create_kthread(thread_batch0) < 0) { kprintf("failed batch0\n"); while(1){} }
     if (sched_create_kthread(thread_batch1) < 0) { kprintf("failed batch1\n"); while(1){} }
-    
+
     if (sched_create_kthread(thread_interactive0) < 0) { kprintf("failed int0\n"); while(1){} }
     if (sched_create_kthread(thread_interactive1) < 0) { kprintf("failed int1\n"); while(1){} }
     if (sched_create_kthread(thread_interactive2) < 0) { kprintf("failed int2\n"); while(1){} }
     if (sched_create_kthread(thread_interactive3) < 0) { kprintf("failed int3\n"); while(1){} }
-    
+
     if (sched_create_kthread(thread_io) < 0) { kprintf("failed ioish\n"); while(1){} }
-    //kprintf("Reached");
     if (sched_create_kthread(thread_stats) < 0) { kprintf("failed stats\n"); while(1){} }
-    //kprintf("Reached");
-    
+
 }
 
 static void thread_trace_printer(void) {
@@ -217,7 +201,6 @@ static void thread_trace_printer(void) {
     }
 }
 
-
 static void thread_kalloc_stress(void) {
     uint64_t iter = 0;
     for (;;) {
@@ -229,11 +212,10 @@ static void thread_kalloc_stress(void) {
         }
 
         iter++;
-        if ((iter & 7) == 0) yield();  
+        if ((iter & 7) == 0) yield();
         else sleep_ticks(1);
     }
 }
-
 
 static void thread_kernel_yielder(void) {
     for (;;) {
@@ -242,12 +224,9 @@ static void thread_kernel_yielder(void) {
     }
 }
 
-
-
 static void test_filesystem(void) {
     kprintf("fs: testing filesystem...\n");
-    
-    // Test 1: Create a directory
+
     kprintf("fs: TEST 1 - Creating /mydir...\n");
     struct inode *dir = create("/mydir", T_DIR);
     if (!dir) {
@@ -269,8 +248,7 @@ static void test_filesystem(void) {
         iunlock(dir);
         iput(dir);
     }
-    
-    // Test 2: Create a file inside directory
+
     kprintf("fs: TEST 2 - Creating /mydir/hello.txt...\n");
     struct inode *file = create("/mydir/hello.txt", T_FILE);
     if (!file) {
@@ -282,8 +260,7 @@ static void test_filesystem(void) {
         iunlock(file);
         iput(file);
     }
-    
-    // Test 3: Path resolution with subdirectories
+
     kprintf("fs: TEST 3 - Reading /mydir/hello.txt...\n");
     struct inode *ip = namei("/mydir/hello.txt");
     if (!ip) {
@@ -297,8 +274,7 @@ static void test_filesystem(void) {
         iunlock(ip);
         iput(ip);
     }
-    
-    // Test 4: Create nested directories
+
     kprintf("fs: TEST 4 - Creating /mydir/subdir...\n");
     struct inode *subdir = create("/mydir/subdir", T_DIR);
     if (!subdir) {
@@ -320,8 +296,7 @@ static void test_filesystem(void) {
         iunlock(subdir);
         iput(subdir);
     }
-    
-    // Test 5: File in nested directory
+
     kprintf("fs: TEST 5 - Creating /mydir/subdir/deep.txt...\n");
     struct inode *deep = create("/mydir/subdir/deep.txt", T_FILE);
     if (!deep) {
@@ -333,8 +308,7 @@ static void test_filesystem(void) {
         iunlock(deep);
         iput(deep);
     }
-    
-    // Verify we can read it back
+
     ip = namei("/mydir/subdir/deep.txt");
     if (ip) {
         ilock(ip);
@@ -345,7 +319,7 @@ static void test_filesystem(void) {
         iunlock(ip);
         iput(ip);
     }
-    
+
     kprintf("fs: Filesystem tests complete!\n");
 }
 
@@ -453,6 +427,17 @@ static void test_root_tree(void) {
         return;
     }
 
+    uint64_t snap_id = 0;
+    if (tree_subvol_create(&snap_id) < 0) {
+        kprintf("tree: FAIL - snapshot\n");
+        return;
+    }
+    uint64_t snap_root = 0;
+    if (tree_subvol_get(snap_id, &snap_root) < 0 || snap_root != fs_root) {
+        kprintf("tree: FAIL - snapshot root\n");
+        return;
+    }
+
     kprintf("tree: OK (extent=%u fs=%u)\n",
             (unsigned)ext_root, (unsigned)fs_root);
 }
@@ -542,6 +527,17 @@ static void test_fs_tree(void) {
         return;
     }
 
+    if (fs_tree_truncate(100, 0) < 0) {
+        kprintf("fs_tree: FAIL - truncate\n");
+        return;
+    }
+    uint16_t ttype = 0;
+    uint64_t tsize = 0;
+    if (fs_tree_get_inode(100, &ttype, &tsize) < 0 || tsize != 0) {
+        kprintf("fs_tree: FAIL - truncate size\n");
+        return;
+    }
+
     if (fs_tree_create_file("/rename_a", 0) < 0 ||
         fs_tree_rename_path("/rename_a", "/rename_b") < 0) {
         kprintf("fs_tree: FAIL - rename\n");
@@ -598,6 +594,33 @@ static void test_fs_tree(void) {
     kprintf("fs_tree: OK\n");
 }
 
+static void install_user_bins(void) {
+    fs_tree_init();
+    (void)fs_tree_create_dir("/bin");
+
+    struct {
+        const char *path;
+        const uint8_t *data;
+        uint32_t len;
+    } bins[] = {
+        { "/bin/testC", userC_elf, userC_elf_len },
+        { "/bin/testD", userD_elf, userD_elf_len },
+        { "/bin/testE", userE_elf, userE_elf_len },
+        { "/bin/testF", userF_elf, userF_elf_len },
+    };
+
+    for (uint32_t i = 0; i < sizeof(bins) / sizeof(bins[0]); i++) {
+        uint32_t ino = 0;
+        if (fs_tree_lookup_path(bins[i].path, &ino) < 0) {
+            if (fs_tree_create_file(bins[i].path, &ino) < 0) {
+                continue;
+            }
+        }
+        fs_tree_truncate(ino, 0);
+        fs_tree_file_write(ino, 0, bins[i].data, bins[i].len);
+    }
+}
+
 void kmain(void) {
     uart_init();
     trap_init();
@@ -616,34 +639,22 @@ void kmain(void) {
     sstatus_enable_sie();
 
     kprintf("tiny-os booted\n");
-    
-    // Test filesystem
+
     test_filesystem();
     test_btree();
     test_btree_persist();
     test_extent_alloc();
     test_root_tree();
     test_fs_tree();
+    install_user_bins();
 
-    if (sched_create_userproc(userA_elf, (uint64_t)userA_elf_len) < 0) {
+    if (sched_create_userproc(userInit_elf, (uint64_t)userInit_elf_len) < 0) {
         kprintf("failed to create init user proc\n");
         for (;;) asm volatile("wfi");
     }
 
-    kprintf("spawned init user proc A (ELF) len=%u\n", userA_elf_len);
+    kprintf("spawned init user proc (ELF) len=%u\n", userInit_elf_len);
 
-    if (sched_create_userproc(userC_elf, (uint64_t)userC_elf_len) < 0) {
-        kprintf("failed to create user proc C\n");
-    } else {
-        kprintf("spawned user proc C (ELF) len=%u\n", userC_elf_len);
-    }
-
-    if (sched_create_userproc(userD_elf, (uint64_t)userD_elf_len) < 0) {
-        kprintf("failed to create user proc D\n");
-    } else {
-        kprintf("spawned user proc D (ELF) len=%u\n", userD_elf_len);
-    }
-    
     scheduler();
 
     for (;;) {

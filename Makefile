@@ -34,6 +34,23 @@ USERD_ELF    := $(BUILD)/userD.elf
 USERD_BLOB_C := $(BUILD)/userD_blob.c
 USERD_BLOB_O := $(BUILD)/userD_blob.o
 
+USERE_ASM    := src/user/testE.S
+USERE_ELF    := $(BUILD)/userE.elf
+USERE_BLOB_C := $(BUILD)/userE_blob.c
+USERE_BLOB_O := $(BUILD)/userE_blob.o
+
+USERF_C      := src/user/testF.c
+USERF_CRT0   := src/user/crt0.S
+USERF_ELF    := $(BUILD)/userF.elf
+USERF_BLOB_C := $(BUILD)/userF_blob.c
+USERF_BLOB_O := $(BUILD)/userF_blob.o
+
+USERINIT_C      := src/user/init.c
+USERINIT_CRT0   := src/user/crt0.S
+USERINIT_ELF    := $(BUILD)/userInit.elf
+USERINIT_BLOB_C := $(BUILD)/userInit_blob.c
+USERINIT_BLOB_O := $(BUILD)/userInit_blob.o
+
 $(BUILD):
 	mkdir -p $(BUILD)
 
@@ -90,6 +107,47 @@ $(USERD_BLOB_C): $(USERD_ELF) | $(BUILD)
 $(USERD_BLOB_O): $(USERD_BLOB_C) | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+$(USERE_ELF): $(USERE_ASM) | $(BUILD)
+	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
+	  -march=rv64imac -mabi=lp64 \
+	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -o $@ $<
+
+$(USERE_BLOB_C): $(USERE_ELF) | $(BUILD)
+	@xxd -i $< | sed -e 's/build_userE_elf/userE_elf/g' \
+	               -e 's/build_userE_elf_len/userE_elf_len/g' > $@
+
+$(USERE_BLOB_O): $(USERE_BLOB_C) | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(USERF_ELF): $(USERF_C) $(USERF_CRT0) | $(BUILD)
+	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
+	  -march=rv64imac -mabi=lp64 \
+	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -Iinclude \
+	  -o $@ $(USERF_CRT0) $(USERF_C)
+
+$(USERF_BLOB_C): $(USERF_ELF) | $(BUILD)
+	@xxd -i $< | sed -e 's/build_userF_elf/userF_elf/g' \
+	               -e 's/build_userF_elf_len/userF_elf_len/g' > $@
+
+$(USERF_BLOB_O): $(USERF_BLOB_C) | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(USERINIT_ELF): $(USERINIT_C) $(USERINIT_CRT0) | $(BUILD)
+	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
+	  -march=rv64imac -mabi=lp64 \
+	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -Iinclude \
+	  -o $@ $(USERINIT_CRT0) $(USERINIT_C)
+
+$(USERINIT_BLOB_C): $(USERINIT_ELF) | $(BUILD)
+	@xxd -i $< | sed -e 's/build_userInit_elf/userInit_elf/g' \
+	               -e 's/build_userInit_elf_len/userInit_elf_len/g' > $@
+
+$(USERINIT_BLOB_O): $(USERINIT_BLOB_C) | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
 $(USER_HDR): | $(BUILD)
 	@echo "Generating $@ (extern declarations)"
 	@echo "#pragma once" > $@
@@ -130,8 +188,11 @@ OBJS := \
 	$(USERB_BLOB_O) \
 	$(USERC_BLOB_O) \
 	$(USERD_BLOB_O) \
+	$(USERE_BLOB_O) \
+	$(USERF_BLOB_O) \
+	$(USERINIT_BLOB_O) \
 	
-all: include/user_progs.h $(USERA_BLOB_O) $(USERB_BLOB_O) $(USERC_BLOB_O) $(USERD_BLOB_O) kernel.elf
+all: include/user_progs.h $(USERA_BLOB_O) $(USERB_BLOB_O) $(USERC_BLOB_O) $(USERD_BLOB_O) $(USERE_BLOB_O) $(USERF_BLOB_O) $(USERINIT_BLOB_O) kernel.elf
 
 
 $(BUILD)/boot.o: src/arch/riscv/boot.S | $(BUILD)

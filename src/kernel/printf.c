@@ -1,10 +1,9 @@
-//printf.c
 #include <kernel/printf.h>
 
 void consputchar(char c) {
     if(c == '\n') {
         uart_putc('\r');
-    }   
+    }
     uart_putc(c);
 }
 
@@ -35,7 +34,7 @@ static void printnum(long long x, int base, int sign) {
         buf[i++] = "0123456789abcdef"[ux % base];
         ux /= base;
     } while (ux);
-    
+
     if (sign) {
         buf[i++] = '-';
     }
@@ -58,7 +57,7 @@ int kprintf(const char *fmt, ...) {
             consputchar(*p);
             continue;
         }
-        p++;    
+        p++;
         switch (*p) {
             case 'd':
                 i = va_arg(ap, int);
@@ -68,7 +67,7 @@ int kprintf(const char *fmt, ...) {
                 i = va_arg(ap, int);
                 printnum(i, 16, 0);
                 break;
-            
+
             case 'u':
                 i = va_arg(ap, int);
                 printnum(i, 10, 0);
