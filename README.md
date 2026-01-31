@@ -307,15 +307,6 @@ This is my **first OS project**, so I’m deliberately starting simple:
 7) **User-facing polish**
    - `rename`, `link`, directory iteration (`readdir`), and full `getcwd`.
 
-### Extra Features (nice-to-have)
-
-- **Online scrub / verify** (walk metadata + data checksums)
-- **Snapshots** (cheap subvolume roots)
-- **Reflink copy-on-write clones** (already present; extend to dirs later)
-- **Simple defrag** (rewrite fragmented extents)
-- **Space quotas** (per inode or per subvolume)
-- **Compression** (per extent, optional)
-
 ## Goals
 
 - Build intuition about:
