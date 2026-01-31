@@ -12,3 +12,6 @@ extern unsigned int  userC_elf_len;
 
 extern unsigned char userD_elf[];
 extern unsigned int  userD_elf_len;
+
+extern unsigned char userE_elf[];
+extern unsigned int  userE_elf_len;

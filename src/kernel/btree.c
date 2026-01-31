@@ -26,8 +26,17 @@ static uint32_t btree_checksum(const struct btree_node *node) {
 static int btree_read_node(uint32_t blockno, struct btree_node *out);
 static int btree_write_node(uint32_t blockno, struct btree_node *node);
 
-static int btree_node_validate(const struct btree_node *node) {
+static int btree_node_validate(const struct btree_node *node, uint32_t blockno) {
     if (node->hdr.magic != BTREE_MAGIC) {
+        return -1;
+    }
+    if (node->hdr.type != BTREE_TYPE_NODE) {
+        return -1;
+    }
+    if (node->hdr.logical != 0 && node->hdr.logical != blockno) {
+        return -1;
+    }
+    if (node->hdr.generation > sb.generation + 1) {
         return -1;
     }
     if (node->hdr.nkeys > BTREE_ORDER) {
@@ -50,12 +59,8 @@ int btree_lookup(uint32_t root_block, uint64_t key, uint64_t *out_value) {
     uint32_t blk = root_block;
 
     for (;;) {
-        struct buf *bp = bread(blk);
         struct btree_node node;
-        memmove(&node, bp->data, sizeof(node));
-        brelse(bp);
-
-        if (btree_node_validate(&node) < 0) {
+        if (btree_read_node(blk, &node) < 0) {
             return -1;
         }
 
@@ -179,9 +184,10 @@ int btree_lookup_le(uint32_t root_block, uint64_t key,
 static void btree_node_init(struct btree_node *node, uint16_t level) {
     memzero(node, sizeof(*node));
     node->hdr.magic = BTREE_MAGIC;
+    node->hdr.type = BTREE_TYPE_NODE;
     node->hdr.level = level;
     node->hdr.nkeys = 0;
-    node->hdr.generation = sb.generation;
+    node->hdr.generation = sb.generation + 1;
 }
 
 int btree_create_empty(uint16_t level, uint32_t *out_block) {
@@ -200,6 +206,9 @@ static int btree_write_node(uint32_t blockno, struct btree_node *node) {
     if (blockno == 0 || blockno >= sb.nblocks) {
         return -1;
     }
+    node->hdr.type = BTREE_TYPE_NODE;
+    node->hdr.logical = blockno;
+    node->hdr.generation = sb.generation + 1;
     node->hdr.checksum = btree_checksum(node);
     struct buf *bp = bread(blockno);
     memmove(bp->data, node, sizeof(*node));
@@ -215,7 +224,7 @@ static int btree_read_node(uint32_t blockno, struct btree_node *out) {
     struct buf *bp = bread(blockno);
     memmove(out, bp->data, sizeof(*out));
     brelse(bp);
-    return btree_node_validate(out);
+    return btree_node_validate(out, blockno);
 }
 
 struct btree_split {

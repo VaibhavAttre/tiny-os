@@ -483,6 +483,8 @@ int proc_fork(void) {
     
     // Copy cwd
     np->cwd = idup(p->cwd);
+    np->tree_cwd = p->tree_cwd;
+    np->subvol_id = p->subvol_id;
     
     // Set up parent/child relationship
     np->parent = p;
@@ -731,7 +733,6 @@ void scheduler() {
             ran = 1;
             curr = &procs[i];
             curr->state = RUNNING;
-
             trace_log(TR_PICK, last, curr, 0);
             last = curr;
 
@@ -1233,6 +1234,8 @@ void proc_fdinit(struct proc *p) {
     
     // Set cwd to root directory
     p->cwd = namei("/");
+    p->tree_cwd = 1;
+    p->subvol_id = 1;
     p->parent = 0;
     p->pid = 0;
 }

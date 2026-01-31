@@ -9,6 +9,11 @@
 .equ SYS_WRITE, 9
 
 _start:
+    # init gp for small-data references (prevent relaxation)
+    .option push
+    .option norelax
+    la gp, __global_pointer$
+    .option pop
     # Test the new write() syscall with FD 1 (stdout)
     # write(fd=1, buf=msg, len=18)
     li a0, 1            # fd = stdout

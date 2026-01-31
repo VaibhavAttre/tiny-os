@@ -7,6 +7,7 @@
 #include <kernel/printf.h>
 #include <kernel/panic.h>
 #include <kernel/string.h>
+#include <kernel/extent.h>
 
 // Cached superblock
 struct superblock sb;
@@ -152,6 +153,50 @@ void brefcnt_dec(uint32_t blockno) {
 // Returns block number, or 0 if out of space.
 uint32_t balloc(void) {
     struct buf *bp;
+
+    if (sb.extent_root != 0) {
+        struct extent ex;
+        if (extent_alloc_meta(1, &ex) == 0) {
+            return ex.start;
+        }
+    }
+
+    if (extent_meta_active()) {
+        uint32_t blocks_per_map = BSIZE * 8;
+        int64_t last_map = (sb.nblocks - 1) / blocks_per_map;
+        for (int64_t map = last_map; map >= 0; map--) {
+            uint32_t bmap_block = 1 + NSUPER + (uint32_t)map;
+            bp = bread(bmap_block);
+            int64_t limit = blocks_per_map - 1;
+            if (map == last_map) {
+                limit = (sb.nblocks - 1) - (map * blocks_per_map);
+            }
+            for (int64_t bi = limit; bi >= 0; bi--) {
+                uint32_t m = 1u << (bi % 8);
+                if ((bp->data[bi / 8] & m) == 0) {
+                    bp->data[bi / 8] |= m;
+                    bwrite(bp);
+                    brelse(bp);
+
+                    uint32_t blockno = (uint32_t)(map * blocks_per_map + bi);
+                    uint32_t refcnt_block = 1 + NSUPER + sb.nbitmap +
+                                            (blockno / REFCNTS_PER_BLOCK);
+                    bp = bread(refcnt_block);
+                    bp->data[blockno % REFCNTS_PER_BLOCK] = 1;
+                    bwrite(bp);
+                    brelse(bp);
+
+                    bp = bread(blockno);
+                    memzero(bp->data, BSIZE);
+                    bwrite(bp);
+                    brelse(bp);
+
+                    return blockno;
+                }
+            }
+            brelse(bp);
+        }
+    }
     
     // Scan through bitmap blocks
     for (uint32_t b = 0; b < sb.nblocks; b += BSIZE * 8) {

@@ -12,12 +12,18 @@ enum {
     BTREE_NODE_INTERNAL = 2,
 };
 
+enum {
+    BTREE_TYPE_NODE = 1,
+};
+
 struct btree_hdr {
     uint32_t magic;
-    uint16_t level;       // 0 = leaf
-    uint16_t nkeys;
+    uint32_t type;        // Metadata block type
+    uint64_t logical;     // Logical block address
     uint64_t generation;
     uint32_t checksum;
+    uint16_t level;       // 0 = leaf
+    uint16_t nkeys;
     uint32_t reserved;
 };
 

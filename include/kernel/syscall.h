@@ -33,6 +33,10 @@ enum {
     SYSCALL_FSTAT = 19,
     SYSCALL_DUP = 20,
     SYSCALL_TRUNCATE = 21,
+    SYSCALL_READDIR = 22,
+    SYSCALL_RENAME = 23,
+    SYSCALL_SNAPSHOT = 24,
+    SYSCALL_SUBVOL_SET = 25,
 };
 
 void syscall_handler(struct trapframe * tf);

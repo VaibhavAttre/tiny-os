@@ -51,7 +51,7 @@ What exists today in the tree (rough, but accurate):
   - Block-level refcounting + CoW on write
   - `clone(src, dst)` reflink syscall (shares blocks)
 
-This means the current filesystem is functional and CoW-aware at the block layer, but it is not yet the B-tree metadata design described in Phases 8-12.
+This means the current filesystem is functional with B-tree metadata, extents, and CoW-aware file I/O. The legacy inode layout still exists for comparison/compat.
 
 ### Phase 1 — Core Basics
 
@@ -155,20 +155,20 @@ Done when: you can repeatedly write blocks, reboot, and verify integrity under s
 
 Goal: implement the modern core: **copy-on-write updates**, **checksummed metadata blocks**, and **atomic commits**.
 
-- [ ] **On-disk metadata block format**
+- [x] **On-disk metadata block format**
   - Common header: magic, type, logical addr, generation, checksum
   - Verify checksum on read; reject corrupt blocks
-- [ ] **Multiple superblocks**
+- [x] **Multiple superblocks**
   - 2–3 copies at fixed locations
   - Generation counter to pick newest valid superblock on mount
-- [ ] **Generic on-disk B-tree**
+- [x] **Generic on-disk B-tree**
   - Search/insert/delete
   - Split/merge/rebalance
   - Stable key ordering + node formats
-- [ ] **Copy-on-write path copying**
+- [x] **Copy-on-write path copying**
   - Never overwrite live metadata blocks
   - Modifying a leaf copies that leaf + all ancestors up to the root
-- [ ] **Transactions + atomic commit**
+- [x] **Transactions + atomic commit**
   - Allocate new blocks during txn
   - Commit protocol: write new roots → write superblock last
   - Crash safety: after reboot you mount either old or new root (never half)
@@ -181,13 +181,13 @@ Done when: you can store key/value items in a B-tree, update them via CoW, and s
 
 Goal: robust allocation in a CoW system (correctness comes before performance).
 
-- [ ] **Extent-based allocator**
+- [x] **Extent-based allocator**
   - Allocate contiguous runs where possible
   - Allocate separately for metadata blocks and data extents
-- [ ] **Deferred frees**
+- [x] **Deferred frees**
   - Never free blocks until the committing superblock is durable
   - Replay-safe semantics
-- [ ] **Free-space structure**
+- [x] **Free-space structure**
   - Start with a simple free-space B-tree (or bitmap tree)
   - Add coalescing of neighboring free extents
 
@@ -199,13 +199,13 @@ Done when: you can allocate/free across many transactions with zero leaks and no
 
 Goal: represent a real filesystem using **multiple trees** (minimum viable set).
 
-- [ ] **Root Tree**
+- [x] **Root Tree**
   - Maps “subvolume id → FS tree root pointer”
-- [ ] **FS Tree**
+- [x] **FS Tree**
   - Inode items
   - Directory entries (name → inode)
   - File extent items (file offset → extent)
-- [ ] **Extent Tree**
+- [x] **Extent Tree**
   - Extent refs + allocation bookkeeping
 - [ ] **Checksum Tree (optional initially)**
   - Store checksums for data extents (metadata checksums remain mandatory)
@@ -228,7 +228,7 @@ Goal: make user programs actually read/write **disk-backed files**.
   - `mkdir`, `unlink`, `fstat`, `chdir`, `getcwd`, `dup`
   - `clone` (reflink) syscall
 
-Note: this phase is implemented on top of the simple inode layout (no extents yet).
+Note: tree-based syscalls are now the default; the inode-based path remains as legacy.
 
 Done when: a user program can create a file, write it, reboot, read it back, and pass stress tests.
 
@@ -238,16 +238,28 @@ Done when: a user program can create a file, write it, reboot, read it back, and
 
 Goal: the features that differentiate CoW B-tree systems (APFS/Btrfs/ZFS-style).
 
-- [ ] **Subvolumes**
+- [x] **Subvolumes**
   - Root tree maps subvol id → FS tree root
-- [ ] **Snapshots**
+- [x] **Snapshots**
   - Snapshot = new root item pointing at existing FS tree root (cheap, instant)
   - Writable snapshots: CoW handles divergence automatically
-- [ ] **Reflinks (file-level clones)**
+- [x] **Reflinks (file-level clones)**
   - Clone file extents without copying data
   - Break sharing on write
 
 Done when: reflink-copy is instant and modifying the clone doesn’t modify the original.
+
+---
+
+### Filesystem Capabilities (Current)
+
+- Create directories and files (nested paths supported)
+- List directory entries and resolve paths
+- Read and write file contents (disk-backed)
+- Rename and unlink paths
+- CoW file data with refcounted extents (safe sharing)
+- Snapshots and subvolume switching
+- Reflinks (clone files; diverge on write)
 
 ---
 

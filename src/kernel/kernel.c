@@ -453,6 +453,17 @@ static void test_root_tree(void) {
         return;
     }
 
+    uint64_t snap_id = 0;
+    if (tree_subvol_create(&snap_id) < 0) {
+        kprintf("tree: FAIL - snapshot\n");
+        return;
+    }
+    uint64_t snap_root = 0;
+    if (tree_subvol_get(snap_id, &snap_root) < 0 || snap_root != fs_root) {
+        kprintf("tree: FAIL - snapshot root\n");
+        return;
+    }
+
     kprintf("tree: OK (extent=%u fs=%u)\n",
             (unsigned)ext_root, (unsigned)fs_root);
 }
@@ -539,6 +550,17 @@ static void test_fs_tree(void) {
     }
     if (!ok) {
         kprintf("fs_tree: FAIL - file data mismatch\n");
+        return;
+    }
+
+    if (fs_tree_truncate(100, 0) < 0) {
+        kprintf("fs_tree: FAIL - truncate\n");
+        return;
+    }
+    uint16_t ttype = 0;
+    uint64_t tsize = 0;
+    if (fs_tree_get_inode(100, &ttype, &tsize) < 0 || tsize != 0) {
+        kprintf("fs_tree: FAIL - truncate size\n");
         return;
     }
 
@@ -642,6 +664,12 @@ void kmain(void) {
         kprintf("failed to create user proc D\n");
     } else {
         kprintf("spawned user proc D (ELF) len=%u\n", userD_elf_len);
+    }
+
+    if (sched_create_userproc(userE_elf, (uint64_t)userE_elf_len) < 0) {
+        kprintf("failed to create user proc E\n");
+    } else {
+        kprintf("spawned user proc E (ELF) len=%u\n", userE_elf_len);
     }
     
     scheduler();

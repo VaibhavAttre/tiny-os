@@ -16,6 +16,11 @@
 .equ O_TREE,   0x800
 
 _start:
+    # init gp for small-data references (prevent relaxation)
+    .option push
+    .option norelax
+    la gp, __global_pointer$
+    .option pop
     # Open a file for writing (create it)
     la a0, filename
     li a1, (O_WRONLY | O_CREATE)

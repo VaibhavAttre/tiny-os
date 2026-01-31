@@ -34,6 +34,11 @@ USERD_ELF    := $(BUILD)/userD.elf
 USERD_BLOB_C := $(BUILD)/userD_blob.c
 USERD_BLOB_O := $(BUILD)/userD_blob.o
 
+USERE_ASM    := src/user/testE.S
+USERE_ELF    := $(BUILD)/userE.elf
+USERE_BLOB_C := $(BUILD)/userE_blob.c
+USERE_BLOB_O := $(BUILD)/userE_blob.o
+
 $(BUILD):
 	mkdir -p $(BUILD)
 
@@ -90,6 +95,19 @@ $(USERD_BLOB_C): $(USERD_ELF) | $(BUILD)
 $(USERD_BLOB_O): $(USERD_BLOB_C) | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+$(USERE_ELF): $(USERE_ASM) | $(BUILD)
+	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
+	  -march=rv64imac -mabi=lp64 \
+	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -o $@ $<
+
+$(USERE_BLOB_C): $(USERE_ELF) | $(BUILD)
+	@xxd -i $< | sed -e 's/build_userE_elf/userE_elf/g' \
+	               -e 's/build_userE_elf_len/userE_elf_len/g' > $@
+
+$(USERE_BLOB_O): $(USERE_BLOB_C) | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
 $(USER_HDR): | $(BUILD)
 	@echo "Generating $@ (extern declarations)"
 	@echo "#pragma once" > $@
@@ -130,8 +148,9 @@ OBJS := \
 	$(USERB_BLOB_O) \
 	$(USERC_BLOB_O) \
 	$(USERD_BLOB_O) \
+	$(USERE_BLOB_O) \
 	
-all: include/user_progs.h $(USERA_BLOB_O) $(USERB_BLOB_O) $(USERC_BLOB_O) $(USERD_BLOB_O) kernel.elf
+all: include/user_progs.h $(USERA_BLOB_O) $(USERB_BLOB_O) $(USERC_BLOB_O) $(USERD_BLOB_O) $(USERE_BLOB_O) kernel.elf
 
 
 $(BUILD)/boot.o: src/arch/riscv/boot.S | $(BUILD)

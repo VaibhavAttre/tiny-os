@@ -8,7 +8,7 @@
 struct inode;
 
 #define NPROC 512
-#define KSTACKS 1
+#define KSTACKS 2
 #define KSTACK_SIZE (4096 * KSTACKS)
 #define QUANT_TICKS 50
 #define HZ 50
@@ -86,6 +86,8 @@ struct proc {
     
     // Current working directory
     struct inode *cwd;
+    uint32_t tree_cwd;
+    uint64_t subvol_id;
     
     struct proc *parent;
     int pid;  

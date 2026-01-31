@@ -15,6 +15,11 @@
 .equ O_TREE,   0x800
 
 _start:
+    # init gp for small-data references (prevent relaxation)
+    .option push
+    .option norelax
+    la gp, __global_pointer$
+    .option pop
     # Print start message
     li a0, 1
     la a1, msg_start
