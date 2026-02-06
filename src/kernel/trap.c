@@ -8,6 +8,7 @@
 #include "kernel/vm.h"
 #include "kernel/sched.h"
 #include "kernel/syscall.h"
+#include "kernel/metrics.h"
 
 extern char trampoline[], uservec[], userret[];
 extern void kernelvec();
@@ -94,6 +95,7 @@ void trap_handler(struct trapframe * tpfrm) {
     if(!interrupt && (exception_code == 12|| exception_code == 13 || exception_code == 15)) {
 
         if(from_user) {
+            metrics_inc_u64(&global_metrics.page_faults, 1);
             struct proc * p = myproc();
             proc_kill(p, -1);
             kprintf("proc %d killed due to page fault\n", p->id);

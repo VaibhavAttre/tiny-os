@@ -4,6 +4,7 @@
 #include "kernel/kalloc.h"
 #include "kernel/string.h"
 #include "kernel/panic.h"
+#include "kernel/metrics.h"
 #include "mmu.h"
 
 static struct virtio_blk disk;
@@ -202,6 +203,15 @@ void virtio_blk_init(void) {
 }
 
 static int disk_rw(uint64_t sector, void *buf, int write) {
+
+    if (write) {
+        metrics_inc_u64(&global_metrics.disk_writes, 1);
+        metrics_inc_u64(&global_metrics.disk_write_bytes, SECTOR_SIZE);
+    } else {
+        metrics_inc_u64(&global_metrics.disk_reads, 1);
+        metrics_inc_u64(&global_metrics.disk_read_bytes, SECTOR_SIZE);
+    }
+
     int idx[3];
 
     if (alloc3_desc(idx) < 0) {

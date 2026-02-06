@@ -16,6 +16,7 @@
 #include "riscv.h"
 #include "kernel/syscall.h"
 #include "kernel/file.h"
+#include "kernel/metrics.h"
 #include "user_test.h"
 
 extern volatile uint64_t ticks;
@@ -607,6 +608,7 @@ static void install_user_bins(void) {
         { "/bin/testD", userD_elf, userD_elf_len },
         { "/bin/testE", userE_elf, userE_elf_len },
         { "/bin/testF", userF_elf, userF_elf_len },
+        { "/bin/run_workload", userW_elf, userW_elf_len },
     };
 
     for (uint32_t i = 0; i < sizeof(bins) / sizeof(bins[0]); i++) {
@@ -622,6 +624,8 @@ static void install_user_bins(void) {
 }
 
 void kmain(void) {
+
+    metrics_init();
     uart_init();
     trap_init();
 

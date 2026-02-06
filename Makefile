@@ -14,6 +14,16 @@ CFLAGS  := -g -Wall -Wextra -ffreestanding -nostdlib -nostartfiles \
 
 LDFLAGS := -T linker.ld -nostdlib
 
+# -------------------------------------------------
+# User program link base (avoid entry point = 0x0)
+# -------------------------------------------------
+USER_BASE ?= 0x10000
+
+# -------------------------------------------------
+# Embedded user programs (A-F, init, run_workload)
+# -------------------------------------------------
+USER_HDR      := include/user_progs.h
+
 USERA_ASM    := src/user/testA.S
 USERA_ELF    := $(BUILD)/userA.elf
 USERA_BLOB_C := $(BUILD)/userA_blob.c
@@ -45,6 +55,12 @@ USERF_ELF    := $(BUILD)/userF.elf
 USERF_BLOB_C := $(BUILD)/userF_blob.c
 USERF_BLOB_O := $(BUILD)/userF_blob.o
 
+USERW_C      := src/user/run_workload.c
+USERW_CRT0   := src/user/crt0.S
+USERW_ELF    := $(BUILD)/userW.elf
+USERW_BLOB_C := $(BUILD)/userW_blob.c
+USERW_BLOB_O := $(BUILD)/userW_blob.o
+
 USERINIT_C      := src/user/init.c
 USERINIT_CRT0   := src/user/crt0.S
 USERINIT_ELF    := $(BUILD)/userInit.elf
@@ -54,10 +70,13 @@ USERINIT_BLOB_O := $(BUILD)/userInit_blob.o
 $(BUILD):
 	mkdir -p $(BUILD)
 
+# -----------------------------
+# User A (asm)
+# -----------------------------
 $(USERA_ELF): $(USERA_ASM) | $(BUILD)
 	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
 	  -march=rv64imac -mabi=lp64 \
-	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -Wl,-Ttext=$(USER_BASE) -Wl,-e,_start \
 	  -o $@ $<
 
 $(USERA_BLOB_C): $(USERA_ELF) | $(BUILD)
@@ -67,11 +86,13 @@ $(USERA_BLOB_C): $(USERA_ELF) | $(BUILD)
 $(USERA_BLOB_O): $(USERA_BLOB_C) | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
-
+# -----------------------------
+# User B (asm)
+# -----------------------------
 $(USERB_ELF): $(USERB_ASM) | $(BUILD)
 	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
 	  -march=rv64imac -mabi=lp64 \
-	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -Wl,-Ttext=$(USER_BASE) -Wl,-e,_start \
 	  -o $@ $<
 
 $(USERB_BLOB_C): $(USERB_ELF) | $(BUILD)
@@ -81,10 +102,13 @@ $(USERB_BLOB_C): $(USERB_ELF) | $(BUILD)
 $(USERB_BLOB_O): $(USERB_BLOB_C) | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+# -----------------------------
+# User C (asm)
+# -----------------------------
 $(USERC_ELF): $(USERC_ASM) | $(BUILD)
 	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
 	  -march=rv64imac -mabi=lp64 \
-	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -Wl,-Ttext=$(USER_BASE) -Wl,-e,_start \
 	  -o $@ $<
 
 $(USERC_BLOB_C): $(USERC_ELF) | $(BUILD)
@@ -94,10 +118,13 @@ $(USERC_BLOB_C): $(USERC_ELF) | $(BUILD)
 $(USERC_BLOB_O): $(USERC_BLOB_C) | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+# -----------------------------
+# User D (asm)
+# -----------------------------
 $(USERD_ELF): $(USERD_ASM) | $(BUILD)
 	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
 	  -march=rv64imac -mabi=lp64 \
-	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -Wl,-Ttext=$(USER_BASE) -Wl,-e,_start \
 	  -o $@ $<
 
 $(USERD_BLOB_C): $(USERD_ELF) | $(BUILD)
@@ -107,10 +134,13 @@ $(USERD_BLOB_C): $(USERD_ELF) | $(BUILD)
 $(USERD_BLOB_O): $(USERD_BLOB_C) | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+# -----------------------------
+# User E (asm)
+# -----------------------------
 $(USERE_ELF): $(USERE_ASM) | $(BUILD)
 	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
 	  -march=rv64imac -mabi=lp64 \
-	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -Wl,-Ttext=$(USER_BASE) -Wl,-e,_start \
 	  -o $@ $<
 
 $(USERE_BLOB_C): $(USERE_ELF) | $(BUILD)
@@ -120,10 +150,13 @@ $(USERE_BLOB_C): $(USERE_ELF) | $(BUILD)
 $(USERE_BLOB_O): $(USERE_BLOB_C) | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+# -----------------------------
+# User F (C + crt0)
+# -----------------------------
 $(USERF_ELF): $(USERF_C) $(USERF_CRT0) | $(BUILD)
 	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
 	  -march=rv64imac -mabi=lp64 \
-	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -Wl,-Ttext=$(USER_BASE) -Wl,-e,_start \
 	  -Iinclude \
 	  -o $@ $(USERF_CRT0) $(USERF_C)
 
@@ -134,10 +167,13 @@ $(USERF_BLOB_C): $(USERF_ELF) | $(BUILD)
 $(USERF_BLOB_O): $(USERF_BLOB_C) | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+# -----------------------------
+# User Init (C + crt0)
+# -----------------------------
 $(USERINIT_ELF): $(USERINIT_C) $(USERINIT_CRT0) | $(BUILD)
 	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
 	  -march=rv64imac -mabi=lp64 \
-	  -Wl,-Ttext=0 -Wl,-e,_start \
+	  -Wl,-Ttext=$(USER_BASE) -Wl,-e,_start \
 	  -Iinclude \
 	  -o $@ $(USERINIT_CRT0) $(USERINIT_C)
 
@@ -148,12 +184,47 @@ $(USERINIT_BLOB_C): $(USERINIT_ELF) | $(BUILD)
 $(USERINIT_BLOB_O): $(USERINIT_BLOB_C) | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+# -----------------------------
+# User Workload Harness (C + crt0)
+# -----------------------------
+$(USERW_ELF): $(USERW_C) $(USERW_CRT0) | $(BUILD)
+	$(RISCV_CC) -nostdlib -nostartfiles -ffreestanding \
+	  -march=rv64imac -mabi=lp64 \
+	  -Wl,-Ttext=$(USER_BASE) -Wl,-e,_start \
+	  -Iinclude \
+	  -o $@ $(USERW_CRT0) $(USERW_C)
+
+$(USERW_BLOB_C): $(USERW_ELF) | $(BUILD)
+	@xxd -i $< | sed -e 's/build_userW_elf/userW_elf/g' \
+	               -e 's/build_userW_elf_len/userW_elf_len/g' > $@
+
+$(USERW_BLOB_O): $(USERW_BLOB_C) | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+# -------------------------------------------------
+# Header with externs for embedded blobs
+# -------------------------------------------------
 $(USER_HDR): | $(BUILD)
-	@echo "Generating $@ (extern declarations)"
+	@echo "Generating $@"
+	@mkdir -p include
 	@echo "#pragma once" > $@
 	@echo "#include <stdint.h>" >> $@
-	@echo "extern const uint8_t user_test_elf[];" >> $@
-	@echo "extern const unsigned int user_test_elf_len;" >> $@
+	@echo "extern unsigned char userA_elf[];" >> $@
+	@echo "extern unsigned int userA_elf_len;" >> $@
+	@echo "extern unsigned char userB_elf[];" >> $@
+	@echo "extern unsigned int userB_elf_len;" >> $@
+	@echo "extern unsigned char userC_elf[];" >> $@
+	@echo "extern unsigned int userC_elf_len;" >> $@
+	@echo "extern unsigned char userD_elf[];" >> $@
+	@echo "extern unsigned int userD_elf_len;" >> $@
+	@echo "extern unsigned char userE_elf[];" >> $@
+	@echo "extern unsigned int userE_elf_len;" >> $@
+	@echo "extern unsigned char userF_elf[];" >> $@
+	@echo "extern unsigned int userF_elf_len;" >> $@
+	@echo "extern unsigned char userInit_elf[];" >> $@
+	@echo "extern unsigned int userInit_elf_len;" >> $@
+	@echo "extern unsigned char userW_elf[];" >> $@
+	@echo "extern unsigned int userW_elf_len;" >> $@
 
 # -----------------------------
 # Kernel build
@@ -174,6 +245,7 @@ OBJS := \
 	$(BUILD)/vm.o \
 	$(BUILD)/swtch.o \
 	$(BUILD)/syscall.o \
+	$(BUILD)/metrics.o \
 	$(BUILD)/kernelvec.o \
 	$(BUILD)/trampoline.o \
 	$(BUILD)/file.o \
@@ -191,9 +263,12 @@ OBJS := \
 	$(USERE_BLOB_O) \
 	$(USERF_BLOB_O) \
 	$(USERINIT_BLOB_O) \
-	
-all: include/user_progs.h $(USERA_BLOB_O) $(USERB_BLOB_O) $(USERC_BLOB_O) $(USERD_BLOB_O) $(USERE_BLOB_O) $(USERF_BLOB_O) $(USERINIT_BLOB_O) kernel.elf
+	$(USERW_BLOB_O)
 
+all: $(USER_HDR) \
+	$(USERA_BLOB_O) $(USERB_BLOB_O) $(USERC_BLOB_O) $(USERD_BLOB_O) $(USERE_BLOB_O) \
+	$(USERF_BLOB_O) $(USERINIT_BLOB_O) $(USERW_BLOB_O) \
+	kernel.elf
 
 $(BUILD)/boot.o: src/arch/riscv/boot.S | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
@@ -270,7 +345,15 @@ $(BUILD)/tree.o: src/kernel/tree.c | $(BUILD)
 $(BUILD)/fs_tree.o: src/kernel/fs_tree.c | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD)/metrics.o: src/kernel/metrics.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+kernel.elf: $(OBJS) linker.ld
+	$(RISCV_LD) $(LDFLAGS) -o $@ $(OBJS)
+
+# -------------------------------------------------
 # Host tools
+# -------------------------------------------------
 MKFS := tools/mkfs
 FSCK := tools/fsck
 
@@ -280,9 +363,9 @@ $(MKFS): tools/mkfs.c
 $(FSCK): tools/fsck.c
 	$(CC) -Wall -o $@ $<
 
-kernel.elf: $(OBJS) linker.ld
-	$(RISCV_LD) $(LDFLAGS) -o $@ $(OBJS)
-
+# -------------------------------------------------
+# Disk image
+# -------------------------------------------------
 DISK := disk.img
 DISK_SIZE := 16M
 DISK_BLOCKS := 16384
@@ -291,6 +374,9 @@ $(DISK): $(MKFS)
 	qemu-img create -f raw $(DISK) $(DISK_SIZE)
 	./$(MKFS) $(DISK) $(DISK_BLOCKS)
 
+# -------------------------------------------------
+# Run targets
+# -------------------------------------------------
 run: kernel.elf $(DISK)
 	qemu-system-riscv64 \
 	  -machine virt \
@@ -309,6 +395,17 @@ run-nodisk: kernel.elf
 	  -kernel kernel.elf \
 	  -nographic
 
+run-fresh: kernel.elf $(DISK)
+	cp $(DISK) $(BUILD)/disk_run.img
+	qemu-system-riscv64 \
+	  -machine virt \
+	  -smp 1 \
+	  -bios none \
+	  -kernel kernel.elf \
+	  -drive file=$(BUILD)/disk_run.img,if=none,format=raw,id=hd0 \
+	  -device virtio-blk-device,drive=hd0 \
+	  -nographic
+
 clean:
 	rm -rf $(BUILD)
 	rm -f kernel.elf
@@ -317,4 +414,4 @@ clean:
 cleanall: clean
 	rm -f $(DISK)
 
-.PHONY: all run run-nodisk clean cleanall
+.PHONY: all run run-nodisk run-fresh clean cleanall

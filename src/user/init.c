@@ -321,6 +321,11 @@ static void cmd_subvol(const char *idstr) {
 
 static int run_builtin(int argc, char *argv[]) {
     const char *cmd = argv[0];
+    if(ustreq(cmd, "done")) {
+        uputs("DONE 0\n");
+        return 0;
+    }
+
     if (ustreq(cmd, "help")) { cmd_help(); return 0; }
     if (ustreq(cmd, "pwd")) { cmd_pwd(); return 0; }
     if (ustreq(cmd, "ls")) {
@@ -386,7 +391,35 @@ static int run_builtin(int argc, char *argv[]) {
 
 static const char *tests[] = { "/bin/testC", "/bin/testD", "/bin/testE", "/bin/testF" };
 
+int main() {
+
+    sys_exec("/bin/run_workload");
+
+    uputs("DONE 1\n");
+    sys_exit(1);
+    return 0;
+}
+
+/*
 int main(void) {
+
+    uputs("READY\n");  
+    long wpid = sys_fork();
+    if (wpid == 0) {
+        // child
+        sys_exec("/bin/run_workload");
+        uputs("init: exec /bin/run_workload failed\n");
+        sys_exit(1);
+    } else if (wpid > 0) {
+        // parent waits for workload to finish
+        long st = 0;
+        sys_wait(&st);
+        uputs("init: run_workload finished\n");
+    } else {
+        uputs("init: fork failed, skipping run_workload\n");
+    }
+
+
     uputs("running user tests...\n");
     for (int i = 0; i < (int)(sizeof(tests) / sizeof(tests[0])); i++) {
         uputs("fork/exec ");
@@ -410,6 +443,7 @@ int main(void) {
     }
 
     uputs("tiny-os shell (type 'help')\n");
+    uputs("READY\n");
     for (;;) {
         char cwd[128];
         if (sys_getcwd(cwd, sizeof(cwd)) < 0) {
@@ -465,3 +499,4 @@ int main(void) {
     }
     return 0;
 }
+*/

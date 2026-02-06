@@ -17,6 +17,7 @@
 #include "kernel/current.h"
 #include <stdint.h>
 #include "user_test.h"
+#include "kernel/metrics.h"
 
 #define COPYBUF_SIZE 512
 static char copybuf[COPYBUF_SIZE];
@@ -32,6 +33,8 @@ static void sys_sleep_ticks(uint64_t t) {
 }
 
 void syscall_handler(struct trapframe * tf) {
+
+    metrics_inc_u64(&global_metrics.syscall_enter, 1);
 
     if (!tf) return;
 
@@ -697,10 +700,35 @@ void syscall_handler(struct trapframe * tf) {
             break;
         }
 
+        case SYSCALL_GET_METRICS: {
+
+            struct proc * p = myproc();
+            uint64_t uaddr = tf->a0;
+            uint64_t usize = tf->a1;
+
+            if(usize < sizeof(struct tiny_metrics)) {
+                tf->a0 = -1;
+                break;
+            }
+
+            struct tiny_metrics snapshot;
+            metrics_snapshot(&snapshot);
+
+            if(copyout(p->pagetable, uaddr, (char*)&snapshot, sizeof(snapshot)) < 0) {
+                tf->a0 = -1;
+                break;
+            }
+
+            tf->a0 = 0;
+            break;
+        }
+
         default: {
             kprintf("Unknown syscall num: %d\n", (int)syscall_num);
             tf->a0 = -1;
             break;
         }
+
+        metrics_inc_u64(&global_metrics.syscall_exit, 1);
     }
 }

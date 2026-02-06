@@ -12,6 +12,7 @@
 #include "kernel/elf.h"
 #include "kernel/file.h"
 #include "kernel/fs.h"
+#include "kernel/metrics.h"
 
 #define USER_TEXT_VA 0x0UL
 #define USER_STACK_TOP TRAPFRAME
@@ -683,6 +684,7 @@ void scheduler() {
             vm_switch(kvmpagetable());
 
             in_scheduler = 0;
+            metrics_inc_u64(&global_metrics.context_switches, 1);
             swtch(&scheduler_context, &curr->ctx);
             in_scheduler = 1;
 

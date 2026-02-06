@@ -1,0 +1,13 @@
+{
+  "run_id": "smoke_a",
+  "cmd": [
+    "make",
+    "run-fresh"
+  ],
+  "saw_ready": true,
+  "saw_done": true,
+  "done_code": 0,
+  "timeout_sec": 20,
+  "wall_ms": 3556,
+  "error": null
+}

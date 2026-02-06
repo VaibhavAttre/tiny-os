@@ -1,0 +1,13 @@
+{
+  "run_id": "run1",
+  "cmd": [
+    "make",
+    "run-fresh"
+  ],
+  "saw_ready": true,
+  "saw_done": true,
+  "done_code": 0,
+  "timeout_sec": 20,
+  "wall_ms": 4112,
+  "error": null
+}
