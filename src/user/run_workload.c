@@ -2,6 +2,20 @@
 #include <kernel/syscall.h>
 #include <kernel/metrics.h>
 
+static char g_workload[32];
+
+static const char *workload_name(void) { return g_workload; }
+
+
+static int streq(const char *a, const char *b) {
+    int i = 0;
+    while (a[i] && b[i]) {
+        if (a[i] != b[i]) return 0;
+        i++;
+    }
+    return a[i] == 0 && b[i] == 0;
+}
+
 static inline long sys_call(long n, long a0, long a1, long a2, long a3, long a4, long a5) {
     register long r0 asm("a0") = a0;
     register long r1 asm("a1") = a1;
@@ -30,6 +44,12 @@ static void uputs(const char *s){ sys_write(1, s, ustrlen(s)); }
 static void append(char *buf, int *pos, const char *s) {
     while (*s) buf[(*pos)++] = *s++;
 }
+
+static inline long sys_get_workload(char *buf, long sz) {
+    return sys_call(SYSCALL_GET_WORKLOAD, (long)buf, sz, 0, 0, 0, 0);
+}
+
+
 static void append_u64(char *buf, int *pos, uint64_t x) {
     char tmp[32];
     int n = 0;
@@ -41,7 +61,36 @@ static void append_u64(char *buf, int *pos, uint64_t x) {
 int main() {
     uputs("READY\n");
 
-    sys_sleep(10);
+    for (int i = 0; i < (int)sizeof(g_workload); i++) g_workload[i] = 0;
+
+    long n = sys_get_workload(g_workload, sizeof(g_workload));
+    if (n <= 0) {
+        uputs("get_workload FAILED\n");
+        // fallback
+        g_workload[0]='b'; g_workload[1]='a'; g_workload[2]='s';
+        g_workload[3]='e'; g_workload[4]='l'; g_workload[5]='i';
+        g_workload[6]='n'; g_workload[7]='e'; g_workload[8]=0;
+    } else {
+        uputs("get_workload bytes=");
+        // (print n...)
+        uputs("\n");
+    }
+
+    uputs("WORKLOAD=");
+    uputs(g_workload);
+    uputs("\n");
+
+
+
+
+    long sleep_t = 10;
+    if (streq(workload_name(), "smoke")) sleep_t = 10;
+    else if (streq(workload_name(), "sleep50")) sleep_t = 50;
+    else sleep_t = 10;
+
+    sys_sleep(sleep_t);
+
+
 
     struct tiny_metrics m;
     for (int i = 0; i < (int)sizeof(m); i++) ((char*)&m)[i] = 0;
@@ -51,9 +100,16 @@ int main() {
     char out[512];
     int p = 0;
 
-    append(out, &p, "{\n  \"workload\": \"baseline\",");
+
+    append(out, &p, "{\n  \"workload\": \"");
+    append(out, &p, workload_name());
+    append(out, &p, "\",");
+
     append(out, &p, "\n  \"workload_version\": 1,");
-    append(out, &p, "\n  \"sleep_ticks\": 10,");
+    append(out, &p, "\n  \"sleep_ticks\": ");
+    append_u64(out, &p, (uint64_t)sleep_t);
+    append(out, &p, ",");
+
 
     append(out, &p, "\n  \"version\": ");
     append_u64(out, &p, m.version);

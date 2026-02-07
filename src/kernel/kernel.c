@@ -18,11 +18,32 @@
 #include "kernel/file.h"
 #include "kernel/metrics.h"
 #include "user_test.h"
+#include "kernel/fdt.h"
 
 extern volatile uint64_t ticks;
 #define RUN_FOR_TICKS 50000
 static volatile uint64_t sink = 0;
 #define DUMP_EVERY 200
+
+
+static char g_workload[32] = "smoke";
+
+const char *workload_name(void) { return g_workload; }
+
+static void workload_set_from_dtb(const void *dtb) {
+    const char *ba = dtb_bootargs(dtb);
+    int i = 0;
+    if (!ba || !ba[0]) return;
+
+    while (ba[i] && i < (int)sizeof(g_workload) - 1) {
+        char c = ba[i];
+        if (c == ' ' || c == '\n' || c == '\r' || c == '\t') break;
+        g_workload[i] = c;
+        i++;
+    }
+    g_workload[i] = 0;
+}
+
 
 static inline void do_ecall_putc(char c) {
     register uint64_t a0 asm("a0") = (uint64_t)c;
@@ -36,6 +57,7 @@ static void thread_ecall_test(void) {
         sleep_ticks(50);
     }
 }
+
 
 void test_vm() {
 
@@ -623,11 +645,17 @@ static void install_user_bins(void) {
     }
 }
 
-void kmain(void) {
+void kmain(uint64_t hartid, const void *dtb) {
 
     metrics_init();
     uart_init();
     trap_init();
+
+    workload_set_from_dtb(dtb);
+    kprintf("workload=%s\n", workload_name());
+    kprintf("dtb=%p bootargs='%s'\n", dtb, dtb_bootargs(dtb) ? dtb_bootargs(dtb) : "(null)");
+    kprintf("workload=%s\n", workload_name());
+
 
     kinit();
     kvminit();
@@ -651,6 +679,8 @@ void kmain(void) {
     test_root_tree();
     test_fs_tree();
     install_user_bins();
+
+
 
     if (sched_create_userproc(userInit_elf, (uint64_t)userInit_elf_len) < 0) {
         kprintf("failed to create init user proc\n");

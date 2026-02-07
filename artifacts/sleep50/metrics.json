@@ -1,0 +1,15 @@
+{
+  "workload": "sleep50",
+  "workload_version": 1,
+  "sleep_ticks": 50,
+  "version": 1,
+  "ticks": 76,
+  "syscall_enter": 10,
+  "syscall_exit": 9,
+  "ctx_switches": 51,
+  "page_faults": 0,
+  "disk_reads": 858,
+  "disk_writes": 4876,
+  "disk_read_bytes": 439296,
+  "disk_write_bytes": 2496512
+}

@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include "user_test.h"
 #include "kernel/metrics.h"
+#include "kernel/workload.h"
 
 #define COPYBUF_SIZE 512
 static char copybuf[COPYBUF_SIZE];
@@ -723,12 +724,42 @@ void syscall_handler(struct trapframe * tf) {
             break;
         }
 
+        case SYSCALL_GET_WORKLOAD: {
+            struct proc *p = myproc();
+            uint64_t ubuf  = tf->a0;
+            uint64_t usize = tf->a1;
+
+            if (!p || ubuf == 0 || usize == 0) {
+                tf->a0 = (uint64_t)-1;
+                break;
+            }
+
+            const char *w = workload_name();
+
+            // compute length including NUL, but clamp to usize
+            uint64_t n = 0;
+            while (w[n] && (n + 1) < usize) n++;
+            n += 1; // include NUL
+
+            if (copyout(p->pagetable, ubuf, (char*)w, n) < 0) {
+                tf->a0 = (uint64_t)-1;
+                break;
+            }
+
+            tf->a0 = (uint64_t)n; // <-- RETURN BYTES COPIED
+            break;
+        }
+
+
+
+
         default: {
             kprintf("Unknown syscall num: %d\n", (int)syscall_num);
             tf->a0 = -1;
             break;
         }
 
-        metrics_inc_u64(&global_metrics.syscall_exit, 1);
     }
+    
+    metrics_inc_u64(&global_metrics.syscall_exit, 1);
 }

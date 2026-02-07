@@ -37,6 +37,7 @@ enum {
     SYSCALL_SNAPSHOT = 24,
     SYSCALL_SUBVOL_SET = 25,
     SYSCALL_GET_METRICS = 26,
+    SYSCALL_GET_WORKLOAD = 27,
 };
 
 void syscall_handler(struct trapframe * tf);

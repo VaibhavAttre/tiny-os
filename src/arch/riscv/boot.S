@@ -4,6 +4,8 @@
 
 _start:
 
+    mv s0, a1
+
     la   t0, mtrap
     andi t0, t0, -4
     csrw mtvec, t0
@@ -80,7 +82,8 @@ _start:
     sd t4, 0(t0)
     li t0, 0x7
     csrw mcounteren, t0
-
+    csrr a0, mhartid
+    mv   a1, s0
     mret
 
     j mtrap                

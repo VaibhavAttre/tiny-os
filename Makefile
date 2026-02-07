@@ -2,6 +2,9 @@
 
 RISCV_PREFIX  ?= riscv64-unknown-elf-
 
+WORKLOAD ?= smoke
+APPEND   ?= $(WORKLOAD)
+
 RISCV_CC      := $(RISCV_PREFIX)gcc
 RISCV_LD      := $(RISCV_PREFIX)ld
 RISCV_OBJCOPY := $(RISCV_PREFIX)objcopy
@@ -263,6 +266,7 @@ OBJS := \
 	$(USERE_BLOB_O) \
 	$(USERF_BLOB_O) \
 	$(USERINIT_BLOB_O) \
+	$(BUILD)/fdt.o \
 	$(USERW_BLOB_O)
 
 all: $(USER_HDR) \
@@ -290,6 +294,9 @@ $(BUILD)/trap.o: src/kernel/trap.c | $(BUILD)
 
 $(BUILD)/ktrap.o: src/arch/riscv/ktrap.S | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/fdt.o: src/kernel/fdt.c | $(BUILD)
+	$(RISCV_CC) $(CFLAGS) -c $< -o $@	
 
 $(BUILD)/mtrap.o: src/arch/riscv/mtrap.S | $(BUILD)
 	$(RISCV_CC) $(CFLAGS) -c $< -o $@
@@ -383,6 +390,7 @@ run: kernel.elf $(DISK)
 	  -smp 1 \
 	  -bios none \
 	  -kernel kernel.elf \
+	  -append "$(APPEND)" \
 	  -drive file=$(DISK),if=none,format=raw,id=hd0 \
 	  -device virtio-blk-device,drive=hd0 \
 	  -nographic
@@ -393,6 +401,7 @@ run-nodisk: kernel.elf
 	  -smp 1 \
 	  -bios none \
 	  -kernel kernel.elf \
+	  -append "$(APPEND)" \
 	  -nographic
 
 run-fresh: kernel.elf $(DISK)
@@ -402,6 +411,7 @@ run-fresh: kernel.elf $(DISK)
 	  -smp 1 \
 	  -bios none \
 	  -kernel kernel.elf \
+	  -append "$(APPEND)" \
 	  -drive file=$(BUILD)/disk_run.img,if=none,format=raw,id=hd0 \
 	  -device virtio-blk-device,drive=hd0 \
 	  -nographic
