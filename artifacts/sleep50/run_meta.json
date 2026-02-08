@@ -1,9 +1,0 @@
-{
-  "workload": "sleep50",
-  "runner_rc": -15,
-  "done_code": 0,
-  "ok": true,
-  "error": null,
-  "timestamp_unix": 1770437294,
-  "terminated_by_runner": true
-}

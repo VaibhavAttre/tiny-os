@@ -1,0 +1,16 @@
+{
+  "cmd": [
+    "make",
+    "run-fresh",
+    "WORKLOAD=smoke"
+  ],
+  "done_code": 0,
+  "end_unix": 1770589843.3433695,
+  "ok": true,
+  "runner_rc": -15,
+  "start_unix": 1770589839.4505303,
+  "terminated_by_runner": true,
+  "timed_out": false,
+  "wall_ms": 3892,
+  "workload": "smoke"
+}

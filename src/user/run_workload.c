@@ -83,12 +83,23 @@ int main() {
 
 
 
-    long sleep_t = 10;
-    if (streq(workload_name(), "smoke")) sleep_t = 10;
-    else if (streq(workload_name(), "sleep50")) sleep_t = 50;
-    else sleep_t = 10;
+    int exit_code = 0;
 
-    sys_sleep(sleep_t);
+    long sleep_t = 10;
+    if (streq(workload_name(), "smoke")) {
+        sleep_t = 10;
+    } else if (streq(workload_name(), "sleep50")) {
+        sleep_t = 50;
+    } else if (streq(workload_name(), "fail")) {
+        sleep_t = 0;
+        exit_code = 1;
+    } else {
+        sleep_t = 0;
+        exit_code = 2;
+    }
+
+    if (sleep_t > 0) sys_sleep(sleep_t);
+
 
 
 
@@ -142,7 +153,14 @@ int main() {
     uputs("METRICS_BEGIN\n");
     sys_write(1, out, p);
     uputs("METRICS_END\n");
-    uputs("DONE 0\n");
-    sys_exit(0);
+    uputs("DONE ");
+    char codebuf[32];
+    int q = 0;
+    append_u64(codebuf, &q, (uint64_t)exit_code);
+    codebuf[q++] = '\n';
+    sys_write(1, codebuf, q);
+
+    sys_exit(exit_code);
+
     return 0;
 }

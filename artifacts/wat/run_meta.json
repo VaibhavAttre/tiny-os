@@ -1,9 +1,0 @@
-{
-  "workload": "wat",
-  "runner_rc": -15,
-  "done_code": 0,
-  "ok": true,
-  "error": null,
-  "timestamp_unix": 1770437298,
-  "terminated_by_runner": true
-}

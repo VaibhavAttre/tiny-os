@@ -1,0 +1,55 @@
+{
+  "run_a": "artifacts/20260206_231509/index.json",
+  "run_b": "artifacts/20260206_231542/index.json",
+  "weird_pct": 20.0,
+  "ok": true,
+  "workloads": [
+    {
+      "workload": "sleep50",
+      "ok": true,
+      "changes": [],
+      "n_changed": 0,
+      "n_weird": 0,
+      "a": {
+        "n_reps": 3,
+        "n_ok": 3,
+        "bad_reps": []
+      },
+      "b": {
+        "n_reps": 3,
+        "n_ok": 3,
+        "bad_reps": []
+      }
+    },
+    {
+      "workload": "smoke",
+      "ok": true,
+      "changes": [
+        {
+          "name": "ticks",
+          "a_mean": 35.0,
+          "b_mean": 34.666666666666664,
+          "delta": -0.3333333333333357,
+          "pct": -0.9523809523809592,
+          "a_min": 35.0,
+          "a_max": 35.0,
+          "b_min": 34.0,
+          "b_max": 35.0,
+          "weird": false
+        }
+      ],
+      "n_changed": 1,
+      "n_weird": 0,
+      "a": {
+        "n_reps": 3,
+        "n_ok": 3,
+        "bad_reps": []
+      },
+      "b": {
+        "n_reps": 3,
+        "n_ok": 3,
+        "bad_reps": []
+      }
+    }
+  ]
+}

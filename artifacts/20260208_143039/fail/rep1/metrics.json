@@ -1,0 +1,15 @@
+{
+  "ctx_switches": 1,
+  "disk_read_bytes": 439296,
+  "disk_reads": 858,
+  "disk_write_bytes": 2496512,
+  "disk_writes": 4876,
+  "page_faults": 0,
+  "sleep_ticks": 0,
+  "syscall_enter": 9,
+  "syscall_exit": 8,
+  "ticks": 25,
+  "version": 1,
+  "workload": "fail",
+  "workload_version": 1
+}
