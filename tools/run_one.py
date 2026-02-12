@@ -58,8 +58,8 @@ def write_json(path: str, obj):
     os.replace(tmp, path)
 
 
-def run_make(workload: str, stop_on_done: bool, terminate_timeout_s: float, timeout_s: float | None):
-    cmd = ["make", "run-fresh", f"WORKLOAD={workload}"]
+def run_make(cmd, workload: str, stop_on_done: bool, terminate_timeout_s: float, timeout_s: float | None):
+    #cmd = ["make", "run-fresh", f"WORKLOAD={workload}"]
 
     p = subprocess.Popen(
         cmd,
@@ -147,11 +147,35 @@ def main():
     ap.add_argument("--no-terminate", action="store_true", help="do not terminate runner after DONE is seen")
     ap.add_argument("--timeout", type=float, default=None, help="kill the run if DONE not seen within this many seconds")
     ap.add_argument("--terminate-timeout", type=float, default=2.0, help="seconds to wait after terminate before kill")
+    ap.add_argument("--kernel", default= None, help="default kernel to use (kernel.elf)")
+    ap.add_argument("--disk", default= None, help="default disk.img")
+    
     args = ap.parse_args()
 
     workload = args.workload
     outdir = args.out if args.out else os.path.join("artifacts", workload)
     os.makedirs(outdir, exist_ok=True)
+
+    cmd = None
+    if args.kernel and args.disk:
+        
+        disk_run = os.path.join(outdir, "disk_run.img")
+        subprocess.check_call(["cp", args.disk, disk_run])
+
+        cmd = [
+            "qemu-system-riscv64",
+            "-machine", "virt",
+            "-smp", "1",
+            "-bios", "none",
+            "-kernel", args.kernel,
+            "-append", workload,
+            "-drive", f"file={disk_run},if=none,format=raw,id=hd0",
+            "-device", "virtio-blk-device,drive=hd0",
+            "-nographic",
+        ]
+    else:
+        
+        cmd = ["make", "run-fresh", f"WORKLOAD={workload}"]
 
     start_unix = time.time()
     rc, log, saw_done_code, terminated_by_runner, timed_out = run_make(
@@ -191,7 +215,7 @@ def main():
         "start_unix": start_unix,
         "end_unix": end_unix,
         "wall_ms": int((end_unix - start_unix) * 1000),
-        "cmd": ["make", "run-fresh", f"WORKLOAD={workload}"],
+        "cmd": cmd,
         "runner_rc": rc,
         "done_code": done,
         "terminated_by_runner": terminated_by_runner,

@@ -17,11 +17,14 @@ def safe_read_json(path: str):
         return None
 
 
-def run_one(workload: str, repdir: str, timeout: float | None) -> dict:
+def run_one(workload: str, repdir: str, timeout: float | None, kernel, disk) -> dict:
     os.makedirs(repdir, exist_ok=True)
     cmd = ["./tools/run_one.py", workload, "--out", repdir]
     if timeout is not None:
         cmd += ["--timeout", str(timeout)]
+    if kernel and disk:
+        cmd += ["--kernel", kernel, "--disk", disk]
+
     p = subprocess.run(
         cmd,
         stdout=subprocess.PIPE,
@@ -44,6 +47,9 @@ def main():
     ap.add_argument("--latest", action="store_true", help="write artifacts/LATEST pointing to this run dir")
     ap.add_argument("--timeout", type=float, default=None, help="pass timeout through to run_one.py")
     ap.add_argument("--fail-fast", action="store_true", help="stop early after first failure")
+    ap.add_argument("--kernel", default=None, help="Prebuilt kernel.elf path")
+    ap.add_argument("--disk", default=None, help="Prebuilt disk.img path")
+
     args = ap.parse_args()
 
     workloads = args.workloads if args.workloads else ["smoke", "sleep50"]
@@ -62,7 +68,7 @@ def main():
     for w in workloads:
         for rep in range(1, args.repeat + 1):
             repdir = os.path.join(outbase, w, f"rep{rep}")
-            r = run_one(w, repdir, args.timeout)
+            r = run_one(w, repdir, args.timeout, args.kernel, args.disk)
 
             meta = safe_read_json(os.path.join(repdir, "run_meta.json")) or {}
             metrics = safe_read_json(os.path.join(repdir, "metrics.json"))
