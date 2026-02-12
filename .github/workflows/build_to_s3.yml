@@ -1,0 +1,76 @@
+name: Build TinyOS artifacts to S3
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-west-1
+  S3_BUCKET: tinyos-runs-vattre-uswest
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (toolchain + qemu + awscli)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential python3 \
+            gcc-riscv64-unknown-elf binutils-riscv64-unknown-elf \
+            qemu-system-misc qemu-utils \
+            awscli
+          qemu-system-riscv64 --version
+          riscv64-unknown-elf-gcc --version
+          aws --version
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::375523929203:role/tinyos-github-builder
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build kernel.elf + disk.img
+        run: |
+          make cleanall
+          make -j"$(nproc)" kernel.elf disk.img
+
+      - name: Create build manifest
+        run: |
+          COMMIT="${GITHUB_SHA}"
+          OUTDIR="build_out"
+          mkdir -p "$OUTDIR"
+          cp kernel.elf disk.img "$OUTDIR/"
+
+          (cd "$OUTDIR" && sha256sum kernel.elf disk.img > sha256sums.txt)
+
+          python3 - << 'PY'
+          import json, os, time
+          commit = os.environ["GITHUB_SHA"]
+          manifest = {
+            "schema_version": 1,
+            "commit": commit,
+            "built_at_unix": int(time.time()),
+            "artifacts": {"kernel_elf": "kernel.elf", "disk_img": "disk.img"},
+          }
+          with open("build_out/build_manifest.json","w") as f:
+            json.dump(manifest, f, indent=2, sort_keys=True)
+          PY
+
+      - name: Upload to S3 (builds/<commit>/)
+        run: |
+          COMMIT="${GITHUB_SHA}"
+          PREFIX="builds/${COMMIT}/"
+          aws s3 cp build_out/kernel.elf "s3://${S3_BUCKET}/${PREFIX}kernel.elf"
+          aws s3 cp build_out/disk.img   "s3://${S3_BUCKET}/${PREFIX}disk.img"
+          aws s3 cp build_out/build_manifest.json "s3://${S3_BUCKET}/${PREFIX}build_manifest.json"
+          aws s3 cp build_out/sha256sums.txt      "s3://${S3_BUCKET}/${PREFIX}sha256sums.txt"
+          echo "Uploaded to s3://${S3_BUCKET}/${PREFIX}"
