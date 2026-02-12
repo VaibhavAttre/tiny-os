@@ -5,6 +5,8 @@ import os
 import subprocess
 import sys
 import time
+sys.path.append(os.path.dirname(__file__))
+from manifest_utils import get_git_info, get_tool_versions
 
 
 def safe_read_json(path: str):
@@ -101,10 +103,39 @@ def main():
         "fail_fast": args.fail_fast,
         "results": results,
         "ok": overall_ok,
+        "schema_version": 1,
     }
 
     with open(os.path.join(outbase, "index.json"), "w") as f:
         json.dump(index, f, indent=2, sort_keys=True)
+ 
+    run_manifest = {
+        "schema_version": 1,
+        "run_id": run_id,
+        "created_at_unix": index["timestamp_unix"],
+
+        "git": get_git_info(),
+        "tools": get_tool_versions(),
+
+        "run": {
+            "workloads": workloads,
+            "repeat": args.repeat,
+            "timeout_sec": args.timeout,
+            "fail_fast": args.fail_fast,
+        },
+
+        "artifacts": {
+            "index": "index.json",
+  
+            "outbase": outbase,
+        },
+    }
+
+    with open(os.path.join(outbase, "manifest.json"), "w") as f:
+        json.dump(run_manifest, f, indent=2, sort_keys=True)
+
+
+    subprocess.check_call(["./tools/validate_run.py", outbase])
 
     if args.latest:
         os.makedirs("artifacts", exist_ok=True)

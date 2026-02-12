@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import json, sys, argparse
 
-IGNORE = {"ticks", "version"}
+IGNORE = {"ticks", "version", "schema_version"}
 
 DEFAULT_ALLOW_PCT = 0.0
 ALLOW_PCT_BY_PREFIX = {"disk_": 5.0}

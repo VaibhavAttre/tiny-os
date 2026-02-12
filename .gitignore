@@ -1,0 +1,83 @@
+############################
+# Editor / OS junk
+############################
+.vscode/
+.DS_Store
+Thumbs.db
+
+############################
+# Debug / local configs
+############################
+.gdbinit
+*.log
+log.txt
+
+############################
+# Python junk
+############################
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+############################
+# Build artifacts (tiny-os)
+############################
+build/
+artifacts/
+
+# Common compiled outputs
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.d
+*.elf
+kernel.elf
+
+# Images / disks
+*.img
+disk.img
+build/disk_run.img
+
+############################
+# Tool caches / generated
+############################
+tools/__pycache__/
+
+# If diff.json is generated output, ignore it:
+diff.json
+
+############################
+# AWS / credentials / keys (IMPORTANT)
+############################
+# Ignore your local AWS helper folder (recommended)
+aws/
+
+# AWS CLI download/install artifacts
+awscliv2.zip
+awscliv2/
+.aws-sam/
+amplify/
+
+# Environment files
+.env
+.env.*
+*.env
+
+# Keys / certs / secrets
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.csr
+
+# Terraform / IaC secret-y state (just in case)
+*.tfstate
+*.tfstate.*
+.terraform/
+

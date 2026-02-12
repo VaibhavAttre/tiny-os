@@ -13,6 +13,26 @@ BEGIN = "METRICS_BEGIN"
 END = "METRICS_END"
 DONE_RE = re.compile(r"\bDONE\s+(-?\d+)\b")
 
+def get_git_info():
+
+    try:
+        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+        dirty = subprocess.check_output(["git", "status", "--porcelain"], text=True).strip() != ""
+        return {"commit": commit, "dirty": dirty}
+    except Exception:
+        return {"commit": "unknown", "dirty": None}
+
+
+def get_tool_versions():
+    out = {}
+    try:
+
+        qemu_ver = subprocess.check_output(["qemu-system-riscv64", "--version"], text=True).splitlines()[0].strip()
+        out["qemu_system_riscv64"] = qemu_ver
+    except Exception:
+        out["qemu_system_riscv64"] = "unknown"
+    return out
+
 
 def extract_metrics(log: str):
     i = log.find(BEGIN)
@@ -187,7 +207,29 @@ def main():
     write_json(os.path.join(outdir, "run_meta.json"), meta)
 
     if metrics is not None:
+        if "schema_version" not in metrics:
+            metrics = dict(metrics)
+            metrics["schema_version"] = 1
+        
         write_json(os.path.join(outdir, "metrics.json"), metrics)
+
+    manifest = {
+
+        "schema_version": 1, 
+        "created_at_unix": start_unix,
+        "workload": workload,
+        "outdir": outdir,
+        "git": get_git_info(),
+        "tools": get_tool_versions(),
+        
+        "artifacts": {
+            "kernel_log": "kernel.log",
+            "run_meta": "run_meta.json",
+            "metrics" : "metrics.json" if metrics is not None else None,
+        },
+    }
+
+    write_json(os.path.join(outdir, "manifest.json"), manifest)
 
     print(f"OK: wrote {outdir}/metrics.json" if ok else "FAIL")
     return 0 if ok else 1
