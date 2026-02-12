@@ -1,3 +1,18 @@
+name: Build TinyOS artifacts to S3
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-west-1
+  S3_BUCKET: tinyos-runs-vattre-uswest
+
 jobs:
   build-and-upload:
     runs-on: ubuntu-22.04
@@ -7,6 +22,7 @@ jobs:
 
       - name: Install dependencies (toolchain + qemu)
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y \
             build-essential python3 \
@@ -14,10 +30,12 @@ jobs:
             qemu-system-misc qemu-utils \
             curl unzip
           riscv64-unknown-elf-gcc --version
+          qemu-system-riscv64 --version || true
 
       - name: Install AWS CLI v2
         run: |
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          set -euo pipefail
+          curl -sS "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
           unzip -q awscliv2.zip
           sudo ./aws/install --update
           aws --version
@@ -30,4 +48,46 @@ jobs:
           audience: sts.amazonaws.com
 
       - name: STS sanity check
-        run: aws sts get-caller-identity
+        run: |
+          set -euo pipefail
+          aws sts get-caller-identity
+
+      - name: Build kernel.elf + disk.img
+        run: |
+          set -euo pipefail
+          make cleanall
+          make -j"$(nproc)" kernel.elf disk.img
+
+      - name: Create build manifest
+        run: |
+          set -euo pipefail
+          COMMIT="${GITHUB_SHA}"
+          OUTDIR="build_out"
+          mkdir -p "$OUTDIR"
+          cp kernel.elf disk.img "$OUTDIR/"
+
+          (cd "$OUTDIR" && sha256sum kernel.elf disk.img > sha256sums.txt)
+
+          python3 - << 'PY'
+          import json, os, time
+          commit = os.environ["GITHUB_SHA"]
+          manifest = {
+            "schema_version": 1,
+            "commit": commit,
+            "built_at_unix": int(time.time()),
+            "artifacts": {"kernel_elf": "kernel.elf", "disk_img": "disk.img"},
+          }
+          with open("build_out/build_manifest.json","w") as f:
+            json.dump(manifest, f, indent=2, sort_keys=True)
+          PY
+
+      - name: Upload to S3 (builds/<commit>/)
+        run: |
+          set -euo pipefail
+          COMMIT="${GITHUB_SHA}"
+          PREFIX="builds/${COMMIT}/"
+          aws s3 cp build_out/kernel.elf "s3://${S3_BUCKET}/${PREFIX}kernel.elf"
+          aws s3 cp build_out/disk.img   "s3://${S3_BUCKET}/${PREFIX}disk.img"
+          aws s3 cp build_out/build_manifest.json "s3://${S3_BUCKET}/${PREFIX}build_manifest.json"
+          aws s3 cp build_out/sha256sums.txt      "s3://${S3_BUCKET}/${PREFIX}sha256sums.txt"
+          echo "Uploaded to s3://${S3_BUCKET}/${PREFIX}"
