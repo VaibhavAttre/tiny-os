@@ -20,17 +20,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies (toolchain + qemu + awscli)
+      - name: Install dependencies (toolchain + qemu)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             build-essential python3 \
             gcc-riscv64-unknown-elf binutils-riscv64-unknown-elf \
             qemu-system-misc qemu-utils \
-            awscli
-          qemu-system-riscv64 --version
+            curl unzip
+          qemu-system-riscv64 --version || true
           riscv64-unknown-elf-gcc --version
+      
+      - name: Install AWS CLI v2
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
           aws --version
+
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
