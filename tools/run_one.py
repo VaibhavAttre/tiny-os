@@ -58,7 +58,7 @@ def write_json(path: str, obj):
     os.replace(tmp, path)
 
 
-def run_make(cmd, workload: str, stop_on_done: bool, terminate_timeout_s: float, timeout_s: float | None):
+def run_make(cmd, stop_on_done: bool, terminate_timeout_s: float, timeout_s: float | None):
     #cmd = ["make", "run-fresh", f"WORKLOAD={workload}"]
 
     p = subprocess.Popen(
@@ -159,7 +159,7 @@ def main():
     cmd = None
     if args.kernel and args.disk:
         
-        disk_run = os.path.join(outdir, "disk_run.img")
+        disk_run = os.path.join(outdir, "disk.img")
         subprocess.check_call(["cp", args.disk, disk_run])
 
         cmd = [
@@ -179,11 +179,14 @@ def main():
 
     start_unix = time.time()
     rc, log, saw_done_code, terminated_by_runner, timed_out = run_make(
+        cmd,
         workload,
         stop_on_done=(not args.no_terminate),
         terminate_timeout_s=args.terminate_timeout,
         timeout_s=args.timeout,
     )
+
+
     end_unix = time.time()
 
     done = None
