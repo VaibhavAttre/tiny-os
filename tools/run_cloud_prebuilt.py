@@ -64,9 +64,9 @@ def main():
     if not args.no_upload:
         env = os.environ.copy()
         env["TINYOS_S3_BUCKET"] = args.bucket
+        env["TINYOS_DDB_TABLE"] = args.table
         env["AWS_REGION"] = args.region
         env["AWS_DEFAULT_REGION"] = args.region
-        env["TINYOS_DDB_TABLE"] = args.table
         sh(["./tools/upload_run.py", outbase], env=env)
 
     if args.keep_build_dir:
