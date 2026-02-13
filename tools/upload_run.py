@@ -5,13 +5,33 @@ import os
 import sys
 import time
 from pathlib import Path
-
+from decimal import Decimal
 import boto3
 
 
 def die(msg: str, code: int = 2):
     print(f"error: {msg}", file=sys.stderr)
     raise SystemExit(code)
+
+def ddb_sanitize(x):
+
+    if x is None:
+        return None
+    if isinstance(x, bool):
+        return x
+    if isinstance(x, int):
+        return x
+    if isinstance(x, float):
+        # preserve value safely
+        return Decimal(str(x))
+    if isinstance(x, str):
+        return x
+    if isinstance(x, dict):
+        return {k: ddb_sanitize(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [ddb_sanitize(v) for v in x]
+    # fallback: stringify unknowns (keeps update_item from exploding)
+    return str(x)
 
 
 def load_json(p: Path) -> dict:
@@ -111,7 +131,7 @@ def finalize_ddb_item(ddb_table, key: dict, updates: dict, dry_run: bool = False
         nk = f"#{k}"
         vk = f":{k}"
         expr_names[nk] = k
-        expr_vals[vk] = v
+        expr_vals[vk] = ddb_sanitize(v)
         set_parts.append(f"{nk} = {vk}")
 
     if not set_parts:
