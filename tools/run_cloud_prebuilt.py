@@ -6,9 +6,9 @@ def die(msg: str, code: int = 2):
     print(f"error: {msg}", file=sys.stderr)
     sys.exit(code)
 
-def sh(cmd: list[str]):
+def sh(cmd: list[str], env=None):
     print("+", " ".join(cmd))
-    subprocess.check_call(cmd)
+    subprocess.check_call(cmd, env=env)
 
 def main():
     ap = argparse.ArgumentParser(description="Run TinyOS workloads using prebuilt build artifacts from S3, then upload the run bundle.")
@@ -32,19 +32,17 @@ def main():
 
     workloads = args.workloads if args.workloads else ["smoke", "sleep50"]
 
-    # Temp dir for downloaded build artifacts
     tmp_root = Path(tempfile.mkdtemp(prefix="tinyos_build_"))
     build_dir = tmp_root / args.commit
     build_dir.mkdir(parents=True, exist_ok=True)
 
     kernel_path = build_dir / "kernel.elf"
-    disk_path   = build_dir / "disk.img"
+    disk_path = build_dir / "disk.img"
 
     prefix = f"builds/{args.commit}/"
     sh(["aws", "s3", "cp", f"s3://{args.bucket}/{prefix}kernel.elf", str(kernel_path), "--region", args.region])
-    sh(["aws", "s3", "cp", f"s3://{args.bucket}/{prefix}disk.img",   str(disk_path),   "--region", args.region])
+    sh(["aws", "s3", "cp", f"s3://{args.bucket}/{prefix}disk.img", str(disk_path), "--region", args.region])
 
-    # Run workloads using prebuilt mode
     cmd = ["./tools/run_many.py", *workloads, "--repeat", str(args.repeat)]
     if args.timeout is not None:
         cmd += ["--timeout", str(args.timeout)]
@@ -52,7 +50,6 @@ def main():
         cmd += ["--fail-fast"]
     if args.out is not None:
         cmd += ["--out", args.out]
-
     cmd += ["--kernel", str(kernel_path), "--disk", str(disk_path), "--latest"]
 
     sh(cmd)
@@ -68,14 +65,13 @@ def main():
         env = os.environ.copy()
         env["TINYOS_S3_BUCKET"] = args.bucket
         env["AWS_REGION"] = args.region
+        env["AWS_DEFAULT_REGION"] = args.region
         env["TINYOS_DDB_TABLE"] = args.table
-
-        sh(["./tools/upload_run.py", outbase])
+        sh(["./tools/upload_run.py", outbase], env=env)
 
     if args.keep_build_dir:
         print(f"Keeping build dir: {build_dir}")
     else:
-        # best-effort cleanup
         try:
             import shutil
             shutil.rmtree(tmp_root)
