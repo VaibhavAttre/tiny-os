@@ -1,18 +1,27 @@
 #!/usr/bin/env python3
-import argparse, os, subprocess, sys, tempfile
+import argparse, os, subprocess, sys, tempfile, time
 from pathlib import Path
+
 
 def die(msg: str, code: int = 2):
     print(f"error: {msg}", file=sys.stderr)
     sys.exit(code)
 
+
 def sh(cmd: list[str], env=None):
     print("+", " ".join(cmd))
     subprocess.check_call(cmd, env=env)
 
+
 def main():
     ap = argparse.ArgumentParser(description="Run TinyOS workloads using prebuilt build artifacts from S3, then upload the run bundle.")
     ap.add_argument("--commit", required=True, help="Git commit SHA used for S3 builds/<commit>/ artifacts")
+
+    # Milestone D alignment
+    ap.add_argument("--run-id", default=None, help="Run id from submitter (align Dynamo row)")
+    ap.add_argument("--created-at-unix", type=int, default=None, help="created_at_unix from submitter (align Dynamo row)")
+    ap.add_argument("--message-id", default=None, help="SQS MessageId (optional)")
+
     ap.add_argument("--bucket", default=os.getenv("TINYOS_S3_BUCKET"), help="S3 bucket (or env TINYOS_S3_BUCKET)")
     ap.add_argument("--region", default=os.getenv("AWS_REGION", "us-west-1"), help="AWS region (default: env AWS_REGION or us-west-1)")
     ap.add_argument("--table", default=os.getenv("TINYOS_DDB_TABLE"), help="DynamoDB table (or env TINYOS_DDB_TABLE)")
@@ -67,7 +76,21 @@ def main():
         env["TINYOS_DDB_TABLE"] = args.table
         env["AWS_REGION"] = args.region
         env["AWS_DEFAULT_REGION"] = args.region
-        sh(["./tools/upload_run.py", outbase], env=env)
+
+        up = ["./tools/upload_run.py", outbase]
+
+        # Align Dynamo row keys with submitter
+        if args.run_id is not None:
+            up += ["--run-id", args.run_id]
+        if args.created_at_unix is not None:
+            up += ["--created-at-unix", str(args.created_at_unix)]
+        if args.message_id is not None:
+            up += ["--message-id", args.message_id]
+
+        # Mark succeeded + finished time (upload_run.py uses update_item)
+        up += ["--status", "succeeded", "--finished-at-unix", str(int(time.time()))]
+
+        sh(up, env=env)
 
     if args.keep_build_dir:
         print(f"Keeping build dir: {build_dir}")
@@ -77,6 +100,7 @@ def main():
             shutil.rmtree(tmp_root)
         except Exception:
             pass
+
 
 if __name__ == "__main__":
     main()
