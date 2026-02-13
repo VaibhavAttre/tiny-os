@@ -84,6 +84,9 @@ def main():
         default=None,
         help='Optional JSON object merged into payload (advanced), e.g. \'{"run_tag":"abc"}\'',
     )
+    p.add_argument("--queue-url", default=os.getenv("TINYOS_SQS_QUEUE_URL"),
+               help="Full SQS QueueUrl (bypass GetQueueUrl)")
+
 
     args = p.parse_args()
 
@@ -106,7 +109,11 @@ def main():
     if args.extra_json:
         merge_extra(payload, args.extra_json)
 
-    queue_url = get_queue_url(args.queue_name, args.region)
+    if args.queue_url:
+        queue_url = args.queue_url
+    else:
+        queue_url = get_queue_url(args.queue_name, args.region)
+
 
     print(f"Region:    {args.region}")
     print(f"QueueName: {args.queue_name}")
