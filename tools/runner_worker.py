@@ -56,6 +56,13 @@ def main():
         try:
             job = json.loads(body)
             commit = job["commit"]
+
+            import re
+            if not re.fullmatch(r"[0-9a-f]{7,40}", commit):
+                print(f"BAD JOB (invalid commit): {commit!r} -> deleting message", flush=True)
+                delete_msg(args.region, args.queue_url, receipt)
+                continue
+
             workloads = job.get("workloads", ["smoke"])
             repeat = int(job.get("repeat", 1))
             timeout = int(job.get("timeout", 30))
