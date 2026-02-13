@@ -393,11 +393,28 @@ static const char *tests[] = { "/bin/testC", "/bin/testD", "/bin/testE", "/bin/t
 
 int main() {
 
-    sys_exec("/bin/run_workload");
+    long pid = sys_fork();
+    if (pid == 0) {
+        // child
+        sys_exec("/bin/run_workload");
+        // only reached if exec fails
+        uputs("DONE 127\n");
+        sys_exit(127);
+    }
 
-    uputs("DONE 1\n");
-    sys_exit(1);
-    return 0;
+    if (pid < 0) {
+        uputs("DONE 127\n");
+        sys_exit(127);
+    }
+
+    long st = 0;
+    sys_wait(&st);
+
+    // If your wait() returns raw exit code already, keep it simple:
+    uputs("DONE ");
+    uputnum((uint64_t)st);
+    uputs("\n");
+    sys_exit((int)st);
 }
 
 /*
