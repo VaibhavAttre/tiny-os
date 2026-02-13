@@ -180,11 +180,11 @@ def main():
     start_unix = time.time()
     rc, log, saw_done_code, terminated_by_runner, timed_out = run_make(
         cmd,
-        workload,
         stop_on_done=(not args.no_terminate),
         terminate_timeout_s=args.terminate_timeout,
         timeout_s=args.timeout,
     )
+
 
 
     end_unix = time.time()
